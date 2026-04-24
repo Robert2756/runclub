@@ -1,0 +1,99 @@
+class DataFormatter {
+  String formatPace(int secondsPerKm) {
+    final minutes = secondsPerKm ~/ 60;
+    final seconds = secondsPerKm % 60;
+    final secString = seconds.toString().padLeft(2, '0');
+    return "$minutes:$secString/km";
+  }
+
+  String formatDistance(int distanceInMeter) {
+    final km = distanceInMeter / 1000;
+    String text = km.toStringAsFixed(2);
+
+    if (text.endsWith('00')) {
+      text = text.substring(0, text.length - 1); // 5.00 → 5.0
+    } else if (text.endsWith('0')) {
+      text = text.substring(0, text.length - 1); // 5.20 → 5.2
+    }
+
+    return text;
+  }
+
+  String timeUntil(String date, String time) {
+    final event = DateTime.parse("${date}T$time");
+    final now = DateTime.now();
+
+    final diff = event.difference(now);
+
+    if (diff.isNegative) {
+      return "Gestartet";
+    }
+
+    if (diff.inDays >= 1) {
+      return "${diff.inDays} Tag${diff.inDays == 1 ? "" : "e"}";
+    }
+
+    if (diff.inHours >= 1) {
+      return "${diff.inHours} Stunde${diff.inHours == 1 ? "" : "n"}";
+    }
+
+    return "${diff.inMinutes} min";
+  }
+
+  String formatWeekdayWithTime(String date, String time) {
+    // Parse the date + time
+    final dt = DateTime.parse("${date}T$time");
+
+    // German weekday names
+    const weekdays = [
+      'Montag',
+      'Dienstag',
+      'Mittwoch',
+      'Donnerstag',
+      'Freitag',
+      'Samstag',
+      'Sonntag',
+    ];
+
+    // Dart weekday: Monday = 1, Sunday = 7
+    final weekdayName = weekdays[dt.weekday - 1];
+
+    // Format hour and minute with leading zero if needed
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+
+    return "$weekdayName $hour:$minute";
+  }
+
+  String formatTime(String date, String time) {
+    // Parse the date + time
+    final dt = DateTime.parse("${date}T$time");
+
+    // Format hour and minute with leading zero if needed
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+
+    return "$hour:$minute";
+  }
+
+  String formatWeekday(String date, String time) {
+    // Parse the date + time
+    final dt = DateTime.parse("${date}T$time");
+
+    // German weekday names
+    const weekdays = [
+      'Montag',
+      'Dienstag',
+      'Mittwoch',
+      'Donnerstag',
+      'Freitag',
+      'Samstag',
+      'Sonntag',
+    ];
+
+    // Dart weekday: Monday = 1, Sunday = 7
+    final weekdayName = weekdays[dt.weekday - 1];
+    return weekdayName;
+  }
+
+}
