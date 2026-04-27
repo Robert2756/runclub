@@ -51,6 +51,7 @@ class _ActivityPageState extends State<ActivityPage> {
   final dataFormatter = DataFormatter();
   final bullet = " •\u200B ";
   ActivityMode _mode = ActivityMode.details;
+  static ActivityMode _lastMode = ActivityMode.details;
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
@@ -234,6 +235,7 @@ class _ActivityPageState extends State<ActivityPage> {
   void initState() {
     super.initState();
     loadActivity();
+    _mode = _lastMode;
     // fetchProfileImage();
   }
 
@@ -327,6 +329,9 @@ class _ActivityPageState extends State<ActivityPage> {
   Widget _buildDetails(ScrollController controller) {
     return ListView(
       controller: controller,
+      physics: _mode == ActivityMode.chat
+        ? const NeverScrollableScrollPhysics()
+        : const ClampingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       children: [
         _buildHeader(),
@@ -342,9 +347,14 @@ class _ActivityPageState extends State<ActivityPage> {
 
   Widget _tab(String label, ActivityMode target) {
     final active = _mode == target;
-
     return GestureDetector(
-      onTap: () => setState(() => _mode = target),
+      // onTap: () => setState(() => _mode = target),
+      onTap: () {
+      setState(() {
+        _mode = target;
+        _lastMode = target;
+      });
+    },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
@@ -750,7 +760,9 @@ class _ActivityPageState extends State<ActivityPage> {
                 _buildHero(),
 
                 DraggableScrollableSheet(
-                  initialChildSize: 0.64,
+                  // snap: true,
+                  key: ValueKey(_mode),
+                  initialChildSize: _mode == ActivityMode.chat ? 0.88 : 0.64,
                   minChildSize: 0.64,
                   maxChildSize: 0.88,
                   builder: (context, scrollController) {

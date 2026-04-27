@@ -380,6 +380,7 @@ class _ActivityChatState extends State<ActivityChat> {
         Expanded(
           child: ListView.builder(
             controller: widget.externalController,
+            // physics: const ClampingScrollPhysics(),
             reverse: true,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             itemCount: _messages.length,
@@ -389,18 +390,6 @@ class _ActivityChatState extends State<ActivityChat> {
 
         _buildInput(),
       ],
-    );
-  }
-
-  Widget _buildStatusStrip() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      color: Colors.grey.shade100,
-      child: Row(
-        children: const [
-          Text("🏃‍♂️ Activity chat"),
-        ],
-      ),
     );
   }
 
