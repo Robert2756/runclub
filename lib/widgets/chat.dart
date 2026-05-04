@@ -59,12 +59,10 @@ class Message {
 
 class ActivityChat extends StatefulWidget {
   final String activityId;
-  final ScrollController externalController;
 
   const ActivityChat({
     super.key,
     required this.activityId,
-    required this.externalController,
   });
 
   @override
@@ -90,14 +88,12 @@ class _ActivityChatState extends State<ActivityChat> {
   void initState() {
     super.initState();
     _bootstrap();
-    widget.externalController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
     _channel.unsubscribe();
     _inputController.dispose();
-    widget.externalController.removeListener(_onScroll);
     super.dispose();
   }
 
@@ -181,13 +177,6 @@ class _ActivityChatState extends State<ActivityChat> {
       _loadingMore = false;
       _hasMore = newMessages.length == _pageSize;
     });
-  }
-
-  void _onScroll() {
-    if (widget.externalController.position.pixels >=
-        widget.externalController.position.maxScrollExtent - 100) {
-      _loadMore();
-    }
   }
 
   Future<void> _fetchProfiles(List<String> userIds) async {
@@ -379,8 +368,8 @@ class _ActivityChatState extends State<ActivityChat> {
 
         Expanded(
           child: ListView.builder(
-            controller: widget.externalController,
             // physics: const ClampingScrollPhysics(),
+            physics: const BouncingScrollPhysics(),
             reverse: true,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             itemCount: _messages.length,

@@ -7,6 +7,7 @@ import 'search_page.dart';
 import 'history_page.dart';
 import 'profile_page.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'invite_inbox_page.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -72,6 +73,39 @@ class _MainPageState extends State<MainPage> {
                 MaterialPageRoute(
                   builder: (_) => const SearchPage(title: "Find People"),
                 ),
+              );
+            },
+          ),
+          IconButton(
+            tooltip: 'Einladungen',
+            icon: Stack(
+              children: [
+                const Icon(Icons.mail_outline),
+
+                // optional badge
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.white,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                builder: (_) => const InviteInboxSheet(),
               );
             },
           ),

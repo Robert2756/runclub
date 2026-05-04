@@ -52,6 +52,8 @@ class _ActivityPageState extends State<ActivityPage> {
   final bullet = " •\u200B ";
   ActivityMode _mode = ActivityMode.details;
   static ActivityMode _lastMode = ActivityMode.details;
+  final DraggableScrollableController _sheetController =
+    DraggableScrollableController();
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
@@ -326,21 +328,43 @@ class _ActivityPageState extends State<ActivityPage> {
     );
   }
 
+  // Widget _buildDetails(ScrollController controller) {
+  //   return ListView(
+  //     controller: controller,
+  //     physics: _mode == ActivityMode.chat
+  //       ? const NeverScrollableScrollPhysics()
+  //       : const ClampingScrollPhysics(),
+  //     padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+  //     children: [
+  //       _buildHeader(),
+  //       _buildQuickStats(),
+  //       const SizedBox(height: 22),
+  //       _buildParticipants(),
+  //       const SizedBox(height: 16),
+  //       _buildDescription(),
+  //       const SizedBox(height: 40),
+  //     ],
+  //   );
+  // }
+
   Widget _buildDetails(ScrollController controller) {
-    return ListView(
+    return CustomScrollView(
       controller: controller,
-      physics: _mode == ActivityMode.chat
-        ? const NeverScrollableScrollPhysics()
-        : const ClampingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      children: [
-        _buildHeader(),
-        _buildQuickStats(),
-        const SizedBox(height: 22),
-        _buildParticipants(),
-        const SizedBox(height: 16),
-        _buildDescription(),
-        const SizedBox(height: 40),
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          sliver: SliverList(
+            delegate: SliverChildListDelegate([
+              _buildHeader(),
+              _buildQuickStats(),
+              const SizedBox(height: 22),
+              _buildParticipants(),
+              const SizedBox(height: 16),
+              _buildDescription(),
+              const SizedBox(height: 40),
+            ]),
+          ),
+        ),
       ],
     );
   }
@@ -350,11 +374,17 @@ class _ActivityPageState extends State<ActivityPage> {
     return GestureDetector(
       // onTap: () => setState(() => _mode = target),
       onTap: () {
-      setState(() {
-        _mode = target;
-        _lastMode = target;
-      });
-    },
+        setState(() {
+          _mode = target;
+          _lastMode = target;
+        });
+
+        _sheetController.animateTo(
+          target == ActivityMode.chat ? 0.88 : 0.70,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+        );
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
@@ -420,7 +450,6 @@ class _ActivityPageState extends State<ActivityPage> {
                 ? _buildDetails(controller)
                 : ActivityChat(
                     activityId: post!.id,
-                    externalController: controller,
                   ),
           ),
         ],
@@ -760,10 +789,9 @@ class _ActivityPageState extends State<ActivityPage> {
                 _buildHero(),
 
                 DraggableScrollableSheet(
-                  // snap: true,
-                  key: ValueKey(_mode),
+                  // key: ValueKey(_mode),
                   initialChildSize: _mode == ActivityMode.chat ? 0.88 : 0.64,
-                  minChildSize: 0.64,
+                  minChildSize: _mode == ActivityMode.chat ? 0.88 : 0.64,
                   maxChildSize: 0.88,
                   builder: (context, scrollController) {
                     return _buildContent(scrollController);

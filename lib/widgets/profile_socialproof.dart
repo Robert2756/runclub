@@ -20,8 +20,8 @@ class SocialProofCard extends StatelessWidget {
     if (diff == 0) return "heute zusammen gelaufen";
     if (diff == 1) return "gestern zusammen gelaufen";
     if (diff < 14) return "vor $diff Tagen zuletzt zusammen gelaufen";
-    if (diff < 60) return "vor ${(diff / 7).round()} Wochen zuletzt gesehen";
-    return "länger her";
+    if (diff < 365) return "vor ${(diff / 7).round()} Wochen zuletzt zusammen gelaufen";
+    return "vor ${(diff / 365)}";
   }
 
   @override
@@ -30,16 +30,15 @@ class SocialProofCard extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(14),
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         children: [
-          const Icon(Icons.favorite_outline, size: 18),
+          // const Icon(Icons.favorite_outline, size: 18),
           const SizedBox(width: 10),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -52,13 +51,17 @@ class SocialProofCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  _formatLast(lastTogether),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[700],
+
+                // 👇 Only show this if there WAS a run
+                if (togetherCount > 0) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    _formatLast(lastTogether),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[700],
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
