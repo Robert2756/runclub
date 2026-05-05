@@ -5,6 +5,7 @@ import 'signin_page.dart';
 import 'main_page.dart';
 import 'theme/appearance.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 
 final supabase = Supabase.instance.client;
@@ -40,6 +41,16 @@ class MyApp extends StatelessWidget {
         theme: AppAppearance.lightTheme,
         navigatorObservers: [routeObserver],
         home: const AuthGate(),
+        locale: const Locale('de', 'DE'),
+        supportedLocales: const [
+          Locale('de', 'DE'),
+          Locale('en', 'US'),
+        ],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
       ),
     );
   }

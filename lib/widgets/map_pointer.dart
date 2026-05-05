@@ -7,7 +7,7 @@ class RunMarkerPainter extends CustomPainter {
   /// optional scale factor for the pointer (default 1.0)
   final double scale;
 
-  const RunMarkerPainter({this.color = const Color.fromARGB(255, 223, 186, 255), this.scale = 1.0});
+  const RunMarkerPainter({this.color = const ui.Color.fromARGB(255, 255, 255, 255), this.scale = 1.0});
 
   @override
   void paint(Canvas canvas, Size size) {

@@ -303,7 +303,7 @@ class FeedPageState extends State<FeedPage> {
             final result = await Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => const CreatePostPage(),
+                builder: (context) => const CreatePostPageV2(),
               ),
             );
               if (result == true) {

@@ -232,7 +232,7 @@ class SelectDataCustom{
                                 });
                               },
                               childDelegate: ListWheelChildBuilderDelegate(
-                                childCount: 50,
+                                childCount: 1000,
                                 builder: (context, index) {
                                   final bool isSelected = index == selectedKm;
                                   return Center(
@@ -331,6 +331,105 @@ class SelectDataCustom{
           )
         );
       }
+    );
+  }
+
+  Future<int?> showSpeedDialog(BuildContext context) {
+    int selectedSpeed = 10; // default
+    final controller = FixedExtentScrollController(initialItem: selectedSpeed);
+
+    return showDialog<int>(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.all(20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              return Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      "Geschwindigkeit auswählen",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    /// 🔹 SINGLE WHEEL
+                    SizedBox(
+                      height: 120,
+                      child: ListWheelScrollView.useDelegate(
+                        itemExtent: 40,
+                        perspective: 0.003,
+                        physics: const FixedExtentScrollPhysics(),
+                        controller: controller,
+                        onSelectedItemChanged: (index) {
+                          setState(() => selectedSpeed = index);
+                        },
+                        childDelegate: ListWheelChildBuilderDelegate(
+                          childCount: 51, // e.g. 0–30 km/h
+                          builder: (context, index) {
+                            final isSelected = index == selectedSpeed;
+
+                            return Center(
+                              child: AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 150),
+                                style: TextStyle(
+                                  fontSize: isSelected ? 30 : 22,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                  color: isSelected
+                                      ? Colors.black
+                                      : Colors.grey.shade400,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text("$index"),
+
+                                    if (isSelected) ...[
+                                      const SizedBox(width: 4),
+                                      const Text(
+                                        "km/h",
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context, selectedSpeed);
+                      },
+                      child: const Text("Übernehmen"),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 

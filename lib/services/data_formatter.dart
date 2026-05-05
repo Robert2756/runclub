@@ -16,7 +16,7 @@ class DataFormatter {
       text = text.substring(0, text.length - 1); // 5.20 → 5.2
     }
 
-    return text;
+    return "$text km";
   }
 
   String timeUntil(String date, String time) {

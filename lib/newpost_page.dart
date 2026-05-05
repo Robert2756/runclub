@@ -1,73 +1,1220 @@
 import 'dart:io';
-import 'widgets/select_data.dart';
 import 'services/map_service.dart';
-import 'widgets/form_controls.dart';
-import 'services/image_service.dart';
-import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:flutter/material.dart';
+import 'widgets/select_data.dart';
+import 'services/data_formatter.dart';
+import 'services/image_service.dart';
+import 'widgets/map_pointer.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 final supabase = Supabase.instance.client;
 
-class CreatePostPage extends StatefulWidget {
-  const CreatePostPage({super.key});
-  @override
-  State<CreatePostPage> createState() => _CreatePostPageState();
-}
+class _BasicSection extends StatelessWidget {
+  final TextEditingController titleController;
+  final TextEditingController descriptionController;
+  final TextEditingController dateController;
+  final TextEditingController timeController;
+  final String activity;
+  final ValueChanged<String> onActivityChanged;
+  final VoidCallback onPickDate;
+  final VoidCallback onPickTime;
+  final DateTime? date;
+  final TimeOfDay? time;
+  final String? missingField;
+  final ValueChanged<int?> onPaceChanged;
+  final ValueChanged<int?> onSpeedChanged;
 
-class _CreatePostPageState extends State<CreatePostPage> {
-  File? postImage;
-  bool joinRequestActive = false;
-  bool visibleForFollowersActive = false;
-  bool visibleForFlintaActive = false;
-  String? selectedType = "Run";
-  bool posted = false;
-  DateTime? selectedDate;
-  String? selectedTime;
-  int? distance;
-  int? pace;
-  String? postTown;
-  bool _canSubmit = false;
-  final selectDataCustom = SelectDataCustom();
-  final imageService = ImageService();
-  final formControls = FormControls();
-  final mapService = MapService();
-  final TextEditingController titleController = TextEditingController();
-  final TextEditingController descriptionController = TextEditingController();
-  final TextEditingController activityController = TextEditingController();
-  final TextEditingController frequencyController = TextEditingController();
-  final TextEditingController townController = TextEditingController();
-  final TextEditingController streetController = TextEditingController();
-  final TextEditingController distanceController = TextEditingController();
-  final TextEditingController paceController = TextEditingController();
-  final TextEditingController dateController = TextEditingController();
-  final TextEditingController timeController = TextEditingController();
-  final MapController mapController = MapController();
+  const _BasicSection({
+    required this.titleController,
+    required this.descriptionController,
+    required this.dateController,
+    required this.timeController,
+    required this.activity,
+    required this.onActivityChanged,
+    required this.onPickDate,
+    required this.onPickTime,
+    required this.date,
+    required this.time,
+    required this.missingField,
+    required this.onPaceChanged,
+    required this.onSpeedChanged,
+  });
 
-  final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
-  LatLng? mapCenter;
+  Widget _activityField(BuildContext context) {
+    return InkWell(
+      onTap: () => _showActivityDialog(context),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(_getActivityIcon(activity), size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                activity.isEmpty ? "Aktivität wählen" : activity,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: activity.isEmpty
+                      ? Colors.grey
+                      : Colors.black,
+                ),
+              ),
+            ),
+            const Icon(Icons.keyboard_arrow_down),
+          ],
+        ),
+      ),
+    );
+  }
 
-  void _checkFormValidity() {
-    final valid =
-        titleController.text.trim().isNotEmpty &&
-        activityController.text.trim().isNotEmpty &&
-        frequencyController.text.trim().isNotEmpty &&
-        townController.text.trim().isNotEmpty &&
-        distanceController.text.trim().isNotEmpty &&
-        paceController.text.trim().isNotEmpty &&
-        dateController.text.trim().isNotEmpty &&
-        timeController.text.trim().isNotEmpty;
+  void _showActivityDialog(BuildContext context) {
+    final activities = ["Laufen", "Radfahren"];
 
-        debugPrint("Checking form validity: $valid");
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
 
-    if (valid != _canSubmit) {
-      setState(() {
-        _canSubmit = valid;
-      });
+                /// 🔹 Title
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Aktivität wählen",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+
+                /// 🔹 List
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: activities.length,
+                    itemBuilder: (context, index) {
+                      final item = activities[index];
+                      final isSelected = item == activity;
+
+                      return Theme(
+                        data: Theme.of(context).copyWith(
+                          splashColor: Colors.transparent,
+                          highlightColor: Colors.transparent,
+                          hoverColor: Colors.transparent,
+                          focusColor: Colors.transparent,
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+
+                          leading: Icon(
+                            _getActivityIcon(item),
+                            color: Colors.black,
+                          ),
+
+                          title: Text(
+                            item,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w500,
+                              color: Colors.black,
+                            ),
+                          ),
+
+                          trailing: isSelected
+                              ? const Icon(Icons.check, size: 18, color: Colors.black)
+                              : null,
+
+                          selected: false, // 👈 important: disable built-in selection UI
+                          tileColor: Colors.transparent,
+
+                          onTap: () {
+                            if (item != activity) {
+                              // reset pace/speed when changing activity
+                              onPaceChanged(null);
+                              onSpeedChanged(null);
+                            }
+                            onActivityChanged(item);
+                            Navigator.pop(context);
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  IconData _getActivityIcon(String activity) {
+    switch (activity) {
+      case "Laufen":
+        return Icons.directions_run;
+      case "Radfahren":
+        return Icons.directions_bike;
+      case "Walk":
+        return Icons.directions_walk;
+      case "Trail":
+        return Icons.terrain;
+      default:
+        return Icons.fitness_center;
     }
   }
 
+  BoxDecoration fieldDecoration({required bool isError}) {
+    return BoxDecoration(
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(
+        color: isError ? Colors.redAccent : Colors.grey.shade300,
+        width: isError ? 1.5 : 1,
+      ),
+      color: isError ? Colors.red.withOpacity(0.04) : Colors.white,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+
+        /// 📝 TITLE
+        TextField(
+          controller: titleController,
+          decoration: InputDecoration(
+            hintText: "z.B. Easy 5k Feierabendrunde",
+            contentPadding: const EdgeInsets.all(12),
+
+            filled: true,
+            fillColor: Colors.white,
+
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: missingField == "title"
+                    ? Colors.redAccent
+                    : Colors.grey.shade300,
+                width: missingField == "title" ? 1.5 : 1,
+              ),
+            ),
+
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: missingField == "title"
+                    ? Colors.redAccent
+                    : Colors.black,
+                width: 1.5,
+              ),
+            ),
+
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        /// 📝 DESCRIPTION
+        TextField(
+          controller: descriptionController,
+          maxLines: 3,
+          decoration: InputDecoration(
+            hintText: "Optional...",
+            contentPadding: const EdgeInsets.all(12),
+
+            filled: true,
+            fillColor: Colors.white,
+
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: Colors.grey.shade300,
+                width: 1,
+              ),
+            ),
+
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(
+                color: Colors.black,
+                width: 1.5,
+              ),
+            ),
+
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        /// 🔥 CORE BLOCK (BIG + IMPORTANT)
+        Column(
+          children: [
+
+            /// Activity selector
+            _activityField(context),
+
+            const SizedBox(height: 14),
+
+            /// 📅 DATE + TIME
+            Row(
+              children: [
+                Expanded(
+                  child: _bigSelector(
+                    context: context,
+                    icon: Icons.calendar_today,
+                    label: date == null
+                        ? "Datum wählen"
+                        : "${date!.day.toString().padLeft(2, '0')}.${date!.month.toString().padLeft(2, '0')}.${date!.year}",
+                    onTap: onPickDate,
+                    isError: missingField == "date",
+                    
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _bigSelector(
+                    context: context,
+                    icon: Icons.access_time,
+                    label: time == null
+                        ? "Zeit wählen"
+                        : time!.format(context),
+                    onTap: onPickTime,
+                    isError: missingField == "time",
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// 🔘 Activity Button
+  Widget _activityButton(String label, bool active) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onActivityChanged(label),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: active ? Colors.black : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: active ? Colors.white : Colors.black,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 📦 Big Selector (Date / Time)
+  Widget _bigSelector({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isError = false,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isError ? Colors.redAccent : Colors.grey.shade300,
+            width: isError ? 1.5 : 1,
+          ),
+          color: Colors.white,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 20),
+            const SizedBox(width: 10),
+            Expanded(child: Text(label)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailsSection extends StatelessWidget {
+  final String activity;
+
+  final int? distance;
+  final int? paceSeconds;
+  final int? speed;
+
+  final ValueChanged<int?> onDistanceChanged;
+  final VoidCallback onPickDistance;
+
+  final ValueChanged<int?> onPaceChanged;
+  final ValueChanged<int?> onSpeedChanged;
+
+  const _DetailsSection({
+    required this.activity,
+    required this.distance,
+    required this.paceSeconds,
+    required this.speed,
+    required this.onDistanceChanged,
+    required this.onPickDistance,
+    required this.onPaceChanged,
+    required this.onSpeedChanged,
+  });
+  
+  Widget _selectorTile({
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    final isPlaceholder = value.startsWith("Select");
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                value.isNotEmpty
+                    ? "$label • $value"
+                    : label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: isPlaceholder ? Colors.grey : Colors.black,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          _selectorTile(
+            label: "Distanz",
+            value: distance == null
+                ? ""
+                : DataFormatter().formatDistance(distance!),
+            onTap: () async {
+              final result =
+                  await SelectDataCustom().showDistanceDialog(context);
+
+              if (result != null) onDistanceChanged(result);
+            },
+          ),
+
+          const SizedBox(height: 6),
+
+          _selectorTile(
+            label: activity == "Laufen" ? "Pace" : "Geschwindigkeit",
+            value: activity == "Laufen" ?    
+              paceSeconds == null
+                  ? ""
+                  : DataFormatter().formatPace(paceSeconds!)
+              : speed == null
+                  ? ""
+                  : "$speed km/h",
+            onTap: () async {
+              if (activity == "Laufen") {
+                final result = await SelectDataCustom().showPaceDialog(context);
+                if (result != null) onPaceChanged(result);
+              } else {
+                final result =
+                    await SelectDataCustom().showSpeedDialog(context);
+                if (result != null) onSpeedChanged(result);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationSection extends StatelessWidget {
+  final MapController mapController;
+  final LatLng? mapCenter;
+  final ValueChanged<LatLng> onLocationChanged;
+  final String mapUrl;
+
+  final TextEditingController townController;
+  final VoidCallback onHelpPressed;
+  final ValueChanged<String> onTownSubmitted;
+  final bool mapReady;
+
+  final VoidCallback onMapReady;
+
+  const _LocationSection({
+    required this.mapController,
+    required this.mapCenter,
+    required this.onLocationChanged,
+    required this.mapUrl,
+    required this.townController,
+    required this.onHelpPressed,
+    required this.onTownSubmitted,
+    required this.mapReady,
+    required this.onMapReady,
+  });
+
+  Widget _buildTownField(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: townController,
+            textInputAction: TextInputAction.search,
+            onSubmitted: onTownSubmitted,
+            decoration: InputDecoration(
+              hintText: "Ort eingeben (z.B. Erfurt)",
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+              filled: true,
+              fillColor: Colors.grey.shade100,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              prefixIcon: const Icon(Icons.search, size: 20),
+
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                onPressed: () => onTownSubmitted(townController.text),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(width: 4),
+
+        // /// subtle help button
+        // GestureDetector(
+        //   onTap: onHelpPressed,
+        //   child: const Padding(
+        //     padding: EdgeInsets.symmetric(horizontal: 4),
+        //     child: Icon(
+        //       Icons.help_outline,
+        //       size: 18, // 👈 real small
+        //       color: Colors.grey,
+        //     ),
+        //   ),
+        // ),
+      ],
+    );
+  }
+
+  Widget _buildMap() {
+    return AspectRatio(
+      aspectRatio: 4 / 3,
+      child: FlutterMap(
+        mapController: mapController,
+        options: MapOptions(
+          initialCenter: mapCenter ?? const LatLng(51.509364, -0.128928),
+          initialZoom: 13,
+          onMapReady: () {
+            onMapReady();
+          } ,
+          onPositionChanged: (position, hasGesture) {
+            // 👇 THIS is your "map finished moving" signal
+            Future.delayed(const Duration(milliseconds: 300), () {
+              onMapReady(); // reuse same callback → sets mapReady = true
+            });
+          },
+          interactionOptions: const InteractionOptions(
+            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+          ),
+          onTap: (tapPosition, point) {
+            onLocationChanged(point);
+          },
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: mapUrl,
+            userAgentPackageName: 'com.robert.app',
+          ),
+          MarkerLayer(
+            markers: [
+              Marker(
+                point: mapCenter ?? const LatLng(51.509364, -0.128928),
+                width: 42,
+                height: 46,
+                alignment: Alignment.topCenter,
+                child: CustomPaint(
+                  painter: RunMarkerPainter(),
+                  child: const SizedBox(
+                    width: 42,
+                    height: 46,
+                    child: Center(
+                      child: Icon(
+                        Icons.directions_run,
+                        color: Color.fromARGB(255, 0, 0, 0),
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTownField(context),
+
+        const SizedBox(height: 12),
+
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Column(
+            children: [ 
+              Stack(
+                children: [
+                  _buildMap(),
+
+                  if (!mapReady)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.grey.shade200,
+                        child: const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              Text(
+                "Wähle wenn möglich öffentliche Treffpunkte beim Treffen mit fremden Personen.",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          )
+        ),
+      ],
+    );
+  }
+}
+
+class _MediaSection extends StatelessWidget {
+  final File? image;
+  final VoidCallback onPickImage;
+
+  const _MediaSection({
+    required this.image,
+    required this.onPickImage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onPickImage,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        height: 180,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: image == null
+              ? Border.all(color: Colors.grey.shade300)
+              : null,
+          color: Colors.grey.shade50,
+        ),
+        child: image == null
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.add_a_photo_outlined, color: Colors.grey.shade600),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Fotos hinzufügen",
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      "Beiträge mit Bildern erhalten mehr Aufmerksamkeit",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
+                )
+              )
+            : Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    /// 🖼 IMAGE PREVIEW (left)
+                    AspectRatio(
+                      aspectRatio: 1,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Image.file(
+                          image!,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    /// ➕ ACTION HINT (right)
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Foto ändern",
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            "Tippen zum ersetzen",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+enum JoinMode {
+  instant,
+  request,
+  inviteOnly,
+}
+
+enum GroupRestriction {
+  everyone,
+  flinta,
+}
+
+class _SettingsSection extends StatelessWidget {
+  final JoinMode joinMode;
+  final ValueChanged<JoinMode> onJoinModeChanged;
+
+  const _SettingsSection({
+    required this.joinMode,
+    required this.onJoinModeChanged,
+  });
+
+  String joinModeStringToGermanUI(String mode) {
+    switch (mode) {
+      case 'Instant':
+        return 'Offen';
+      case 'Request':
+        return 'Anfrage';
+      case 'Invite':
+        return 'Einladung';
+      default:
+        return mode;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+
+        /// 🤝 JOIN MODE
+        _sectionTitle("Beitritt"),
+
+        const SizedBox(height: 8),
+
+        _segmentedSelector<JoinMode>(
+          value: joinMode,
+          options: const {
+            JoinMode.instant: "Instant",
+            JoinMode.request: "Request",
+            JoinMode.inviteOnly: "Invite",
+          },
+          onChanged: onJoinModeChanged,
+        ),
+
+        const SizedBox(height: 6),
+
+        _description(
+          joinMode == JoinMode.instant
+              ? "Jeder kann sofort beitreten"
+              : joinMode == JoinMode.request
+                  ? "Beitritt nur auf Anfrage möglich"
+                  : "Nur eingeladene Leute können beitreten",
+        ),
+
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  /// 🔹 Section title
+  Widget _sectionTitle(String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: Colors.grey,
+        ),
+      ),
+    );
+  }
+
+  /// 🔹 Description text
+  Widget _description(String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey.shade600,
+        ),
+      ),
+    );
+  }
+
+  /// 🔹 Segmented selector (reusable)
+  Widget _segmentedSelector<T>({
+    required T value,
+    required Map<T, String> options,
+    required ValueChanged<T> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: options.entries.map((entry) {
+          final selected = entry.key == value;
+
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => onChanged(entry.key),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 0),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: selected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: selected
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          )
+                        ]
+                      : null,
+                ),
+                child: Center(
+                  child: Text(
+                    joinModeStringToGermanUI(entry.value),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: selected
+                          ? Colors.black
+                          : Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class ExpandableCard extends StatefulWidget {
+  final String title;
+  final Widget child;
+  final bool isError;
+
+  const ExpandableCard({
+    super.key,
+    required this.title,
+    required this.child,
+    this.isError = false,
+  });
+
+  @override
+  State<ExpandableCard> createState() => _ExpandableCardState();
+}
+
+class _ExpandableCardState extends State<ExpandableCard> {
+  bool open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: widget.isError ? Colors.redAccent : Colors.grey.shade300,
+          width: widget.isError ? 1.6 : 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => open = !open),
+            child: Row(
+              children: [
+                Text(
+                  widget.title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Icon(open
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down),
+              ],
+            ),
+          ),
+
+          if (open) ...[
+            const SizedBox(height: 12),
+            widget.child,
+          ]
+        ],
+      ),
+    );
+  }
+}
+class _TopToast extends StatefulWidget {
+  final String message;
+  final VoidCallback onDismiss;
+
+  const _TopToast({
+    required this.message,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_TopToast> createState() => _TopToastState();
+}
+
+class _TopToastState extends State<_TopToast>
+    with SingleTickerProviderStateMixin {
+  late AnimationController controller;
+  late Animation<Offset> slide;
+  late Animation<double> fade;
+
+  @override
+  void initState() {
+    super.initState();
+
+    controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+
+    slide = Tween<Offset>(
+      begin: const Offset(0, -1), // comes from top
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: controller, curve: Curves.easeOutCubic),
+    );
+
+    fade = CurvedAnimation(parent: controller, curve: Curves.easeOut);
+
+    controller.forward();
+
+    Future.delayed(const Duration(seconds: 2), () async {
+      await controller.reverse();
+      widget.onDismiss();
+    });
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: SlideTransition(
+          position: slide,
+          child: FadeTransition(
+            opacity: fade,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111111),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.info_outline,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          widget.message,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum SoftWarning {
+  media,
+  distance,
+  pace,
+  speed,
+}
+
+class CreatePostPageV2 extends StatefulWidget {
+  const CreatePostPageV2({super.key});
+
+  @override
+  State<CreatePostPageV2> createState() => _CreatePostPageV2State();
+}
+
+class _CreatePostPageV2State extends State<CreatePostPageV2> {
+
+  final titleController = TextEditingController();
+  final descriptionController = TextEditingController();
+  final dateController = TextEditingController();
+  final timeController = TextEditingController();
+  final ImageService imageService = ImageService();
+  final MapController mapController = MapController();
+  final townController = TextEditingController();
+  JoinMode joinMode = JoinMode.request;
+  final mapService = MapService();
+  bool mapReady = false;
+  // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+  final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+  String? postTown;
+  LatLng? mapCenter;
+  File? postImage = null;
+  int? distance;
+  int? paceSeconds;
+  int? speed;
+
+  String activity = "Laufen";
+  DateTime? date;
+  TimeOfDay? time;
+
+  bool canSubmit = false;        // form valid
+  bool isLoading = false;        // request state
+  bool isBlockedByLimit = false; // future premium rule
+  String? missingMessage;
+  String? missingField;
+
+  // Widget _missingInfoBanner(String message) {
+  //   return AnimatedContainer(
+  //     duration: const Duration(milliseconds: 200),
+  //     margin: const EdgeInsets.only(bottom: 12),
+  //     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+  //     decoration: BoxDecoration(
+  //       color: const Color(0xFFF6F6F6),
+  //       borderRadius: BorderRadius.circular(12),
+  //       border: Border.all(color: Colors.black12),
+  //     ),
+  //     child: Row(
+  //       children: [
+  //         const Icon(Icons.info_outline, size: 18, color: Colors.black87),
+  //         const SizedBox(width: 8),
+  //         Expanded(
+  //           child: Text(
+  //             message,
+  //             style: const TextStyle(
+  //               fontSize: 13,
+  //               fontWeight: FontWeight.w500,
+  //               color: Colors.black87,
+  //             ),
+  //           ),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
+
+  void _validate() {
+    String? error;
+
+    if (titleController.text.trim().isEmpty) {
+      error = "Titel fehlt";
+    } else if (date == null) {
+      error = "Datum fehlt";
+    } else if (time == null) {
+      error = "Zeit fehlt";
+    } else if (mapCenter == null) {
+      error = "Standort fehlt";
+    }
+
+    setState(() {
+      canSubmit = error == null;
+      missingMessage = error;
+    });
+  }
+
+  // SoftWarning _getSoftWarning() {
+  //   final mediaMissing = postImage == null;
+  //   final statsMissing = missingStats;
+
+  //   if (mediaMissing && statsMissing) return SoftWarning.stats; 
+  //   // 👆 bewusst: stats is more "actionable" than media
+
+  //   if (statsMissing) return SoftWarning.stats;
+  //   if (mediaMissing) return SoftWarning.media;
+
+  //   return SoftWarning.none;
+  // }
+
+  // String _softWarningText(SoftWarning warning) {
+  //   switch (warning) {
+  //     case SoftWarning.media:
+  //       return "Kein Bild hinzugefügt. Trotzdem veröffentlichen?";
+  //     case SoftWarning.stats:
+  //       return "Keine Distanz oder Tempo angegeben. Trotzdem veröffentlichen?";
+  //     case SoftWarning.none:
+  //       return "";
+  //   }
+  // }
+
   Future<bool> addPostToDatabase() async {
+    debugPrint("Date: $date");
     // insert post
     try {
       final response = await supabase
@@ -75,19 +1222,17 @@ class _CreatePostPageState extends State<CreatePostPage> {
         .insert({
           'title': titleController.text,
           'description': descriptionController.text,
-          'activity': activityController.text,
-          'frequency': frequencyController.text,
+          'activity': activity == "Laufen" ? "Run" : "Bike",
           'distance': distance,
-          'pace': pace,
-          'date': selectedDate?.toIso8601String(),
-          'time': selectedTime,
-          'image_url': null,
-          'joinrequest_active': joinRequestActive,
-          'visibleforfollowers_active': visibleForFollowersActive,
-          'visibleforflinta_active': visibleForFlintaActive,
+          'pace': paceSeconds,
+          'speed': speed,
+          'date': date?.toIso8601String(),
+          'time': time != null ? formatTimeOfDay(time!) : null,
+          'image_url': null, // will update later after upload
+          'join_mode': joinModeToString(joinMode), //joinRequestActive,
           'latitude': mapCenter?.latitude ?? 0.0,
           'longitude': mapCenter?.longitude ?? 0.0,
-          'town': postTown,
+          'town': postTown ?? '',
           'creator_id': supabase.auth.currentUser!.id,
         })
         .select()
@@ -114,728 +1259,495 @@ class _CreatePostPageState extends State<CreatePostPage> {
     }
   }
 
-  Future<File?> getImage() async {
-    File? result = await imageService.pickImage();
-    if (result != null) {
-      result = await imageService.cropImageWithUI(result);
-      if (result != null) {
-        result = await imageService.compressImage(result);
-        return result;
-      }
-      return null;
+  Future<File?> pickAndProcessImage() async {
+    File? image = await imageService.pickImage();
+    if (image == null) return null;
+
+    image = await imageService.cropImageWithUI(image);
+    if (image == null) return null;
+
+    image = await imageService.compressImage(image);
+
+    return image;
+  }
+
+  Future<void> _pickImage() async {
+    final image = await pickAndProcessImage();
+
+    if (image != null) {
+      setState(() {
+        postImage = image;
+      });
     }
+  }
+
+  String formatTimeOfDay(TimeOfDay time) {
+    return "${time.hour.toString().padLeft(2,'0')}:${time.minute.toString().padLeft(2,'0')}:00";
+  }
+
+  String joinModeToString(JoinMode mode) {
+    switch (mode) {
+      case JoinMode.instant:
+        return 'Instant';
+      case JoinMode.request:
+        return 'Request';
+      case JoinMode.inviteOnly:
+        return 'Invite';
+    }
+  }
+
+  String? _getValidationError() {
+    if (titleController.text.trim().isEmpty) return "title";
+    if (date == null) return "date";
+    if (time == null) return "time";
+    if (mapCenter == null) return "location";
     return null;
   }
 
-  Widget _buildDetailOption(
-      IconData icon,
-      String label,
-      TextEditingController controller,
-      VoidCallback onTap,
-  ) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: double.infinity, // stretch over full line
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.white,
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.black),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                controller.text.isEmpty ? label : controller.text,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: controller.text.isEmpty ? FontWeight.normal : FontWeight.bold,
-                  color: Colors.black,
-                ),
-              ),
-            ),
-            if (controller.text.isEmpty) // optional arrow for empty fields
-              const Icon(Icons.keyboard_arrow_down, color: Colors.grey)
-          ],
-        ),
-      ),
+  OverlayEntry? _currentToast;
+
+  void _showMissingFields(String message) {
+    _currentToast?.remove(); // 👈 kill existing one
+
+    final overlay = Overlay.of(context);
+
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) {
+        return _TopToast(
+          message: _humanReadable(message),
+          onDismiss: () {
+            entry.remove();
+            if (_currentToast == entry) {
+              _currentToast = null;
+            }
+          },
+        );
+      },
     );
+
+    _currentToast = entry;
+    overlay.insert(entry);
   }
 
-  Widget _buildMap(){
-    return AspectRatio(
-      aspectRatio: 4 / 3,
-      child: FlutterMap(
-        mapController: mapController,
-        options: MapOptions(
-          initialCenter: mapCenter ?? LatLng(51.509364, -0.128928),
-          initialZoom: 13,
-          interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-          ),
-          onTap: (tapPosition, point) {
-            setState(() {
-              mapCenter = point;
-              debugPrint("New coordinates: ${point.latitude}, ${point.longitude}");
-            });
-          },
+  void _showLimitDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Limit erreicht"),
+        content: const Text(
+          "Du kannst nur 2 aktive Posts haben.\n"
+          "Upgrade auf Premium für 2,99€, um unbegrenzt zu posten.",
         ),
-        children: [
-          TileLayer(
-            urlTemplate:
-              mapUrl,
-            userAgentPackageName: 'com.robert.app',
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Später"),
           ),
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: mapCenter ?? LatLng(51.509364, -0.128928),
-                width: 70,
-                height: 70,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    /// Main activity badge
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(
-                              blurRadius: 12,
-                              color: Colors.black.withOpacity(0.15),
-                            )
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.directions_run,
-                          color: Color.fromARGB(255, 223, 186, 255),
-                          size: 24,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          )
+          ElevatedButton(
+            onPressed: () {
+              // TODO: go to paywall
+            },
+            child: const Text("Upgrade"),
+          ),
         ],
       ),
     );
   }
 
+  String _humanReadable(String key) {
+    switch (key) {
+      case "title": return "Titel fehlt";
+      case "date": return "Datum fehlt";
+      case "time": return "Zeit fehlt";
+      case "location": return "Standort fehlt";
+      case "timeTooSoon": return "Startzeit muss mindestens 1h in der Zukunft liegen";
+      default: return "Eingabe fehlt";
+    }
+  }
+
+  DateTime? _getPlannedDateTime() {
+    if (date == null || time == null) return null;
+
+    return DateTime(
+      date!.year,
+      date!.month,
+      date!.day,
+      time!.hour,
+      time!.minute,
+    );
+  }
+
+  bool _isAtLeastOneHourInFuture() {
+    final planned = _getPlannedDateTime();
+    if (planned == null) return false;
+
+    return planned.isAfter(DateTime.now().add(const Duration(hours: 1)));
+  }
+
+  // Future<bool> _confirmWithout() async {
+  //   final warning = _getSoftWarning();
+
+  //   if (warning == SoftWarning.none) return true;
+
+  //   final proceed = await showDialog<bool>(
+  //     context: context,
+  //     builder: (_) => AlertDialog(
+  //       content: Text(_softWarningText(warning)),
+  //       actions: [
+  //         TextButton(
+  //           onPressed: () => Navigator.pop(context, false),
+  //           child: const Text("Abbruch"),
+  //         ),
+  //         ElevatedButton(
+  //           onPressed: () => Navigator.pop(context, true),
+  //           child: const Text("OK"),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+
+  //   return proceed ?? false;
+  // }
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    descriptionController.dispose();
+    dateController.dispose();
+    timeController.dispose();
+    townController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mapReady) {
+        setState(() => mapReady = true);
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
-
-    titleController.addListener(_checkFormValidity);
-    activityController.addListener(_checkFormValidity);
-    frequencyController.addListener(_checkFormValidity);
-    townController.addListener(_checkFormValidity);
-    distanceController.addListener(_checkFormValidity);
-    paceController.addListener(_checkFormValidity);
-    dateController.addListener(_checkFormValidity);
-    timeController.addListener(_checkFormValidity);
+    titleController.addListener(_validate);
   }
 
-@override
-Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: Colors.white,
-    appBar: AppBar(
-      title: const Text(
-        "Aktivität Planen",
-        style: TextStyle(
-          fontSize: 24,
-          fontWeight: FontWeight.bold,
-        ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Aktivität planen"),
       ),
-      backgroundColor: Colors.white,
-      foregroundColor: Colors.black,
-      elevation: 0,
-    ),
-    body: Column(
+      body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          Expanded(
-            child:SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-              child: Column(
-                children: [
-                  // const SizedBox(height: 20),
-                  TextField(
-                    controller: titleController,
-                    cursorColor: Colors.black,
-                    decoration: InputDecoration(
-                      labelText: "Titel deiner geplanten Aktivität",
-                      labelStyle: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                      floatingLabelBehavior: FloatingLabelBehavior.never,
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Colors.black,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                  ),
 
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: descriptionController,
-                    cursorColor: Colors.black,
-                    minLines: 3,
-                    maxLines: 6,
-                    decoration: InputDecoration(
-                      labelText: "Coffee run oder doch Intervalle?",
-                      labelStyle: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                      floatingLabelBehavior: FloatingLabelBehavior.never,
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Colors.black,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                  ),
+          /// 🔥 BASIC (always visible)
+          _BasicSection(
+            titleController: titleController,
+            descriptionController: descriptionController,
+            dateController: dateController,
+            timeController: timeController,
+            activity: activity,
+            onPaceChanged: (val) {
+              setState(() => paceSeconds = val);
+              _validate();
+            },
 
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: activityController,
-                          readOnly: true,
-                          cursorColor: Colors.grey,
-                          decoration: InputDecoration(
-                            hintText: "Aktivität",
-                            hintStyle: TextStyle(
-                              fontSize: 14,
-                              color: const Color.fromARGB(255, 0, 0, 0),
-                              fontWeight: FontWeight.w600
-                            ),
-                            suffixIcon: const Icon(Icons.keyboard_arrow_down),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Colors.grey),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Colors.grey),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Colors.black,
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          onTap: () async {
-                            final result = await selectDataCustom.showActivityDialog(context);
-                            if (result != null) {
-                              setState(() {
-                                activityController.text = result;
-                              });
-                              _checkFormValidity();
-                            }
-                          }
-                        )
+            onSpeedChanged: (val) {
+              setState(() => speed = val);
+              _validate();
+            },
+            onActivityChanged: (val) {
+              setState(() => activity = val);
+            },
+            onPickDate: () async {
+              final result = await showDatePicker(
+                context: context,
+                firstDate: DateTime.now(),
+                lastDate: DateTime(2100),
+                builder: (context, child) {
+                  return Theme(
+                    data: Theme.of(context).copyWith(
+                      colorScheme: const ColorScheme.light(
+                        primary: Colors.black,
+                        onPrimary: Colors.white,
+                        surface: Colors.white,
+                        onSurface: Colors.black,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: frequencyController,
-                          readOnly: true,
-                          cursorColor: Colors.grey,
-                          decoration: InputDecoration(
-                            hintText: "Häufigkeit",
-                            hintStyle: TextStyle(
-                              fontSize: 14,
-                              color: const Color.fromARGB(255, 0, 0, 0),
-                              fontWeight: FontWeight.w600
-                            ),
-                            suffixIcon: const Icon(Icons.keyboard_arrow_down),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Colors.grey),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Colors.grey),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Colors.black,
-                                width: 2,
-                              ),
-                            ),
-                          ),
-                          onTap: () async {
-                            final result = await selectDataCustom.showFrequencyDialog(context);
-                            if (result != null) {
-                              setState(() {
-                                frequencyController.text = result;
-                              });
-                              _checkFormValidity();
-                            }
-                          }
-                        ),
-                      ),
-                    ]
-                  ),
-                  const SizedBox(height: 25),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: const Text(
-                      "Aktivitätsdetails",
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
+                      dialogTheme: const DialogThemeData(
+                        surfaceTintColor: Colors.transparent,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildDetailOption(
-                          Icons.straighten,
-                          "Distanz",
-                          distanceController,
-                          () async {
-                            final result = await selectDataCustom.showDistanceDialog(context);
-                            if (result != null) {
-                              setState(() {
-                                distance = result;
-                                final selectedDistance = (result / 1000);
-                                distanceController.text =
-                                    "${selectedDistance.toStringAsFixed(2).replaceAll(RegExp(r'0*$'), '').replaceAll(RegExp(r'\.$'), '')} km";
-                              });
-                              _checkFormValidity();
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        _buildDetailOption(
-                          Icons.speed,
-                          "Pace",
-                          paceController,
-                          () async {
-                            final result = await selectDataCustom.showPaceDialog(context);
-                            if (result != null) {
-                              int minutes = result ~/ 60;
-                              int seconds = result % 60;
-                              setState(() {
-                                pace = result;
-                                paceController.text = '$minutes:${seconds.toString().padLeft(2, '0')}/km';
-                              });
-                              _checkFormValidity();
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        _buildDetailOption(
-                          Icons.schedule,
-                          "Datum",
-                          dateController,
-                          () async {
-                            final DateTime? result = await selectDataCustom.showCalendarDialog(context);
-                            if (result != null) {
-                              setState(() {
-                                selectedDate = result;
-                                dateController.text =
-                                    "${result.day.toString().padLeft(2,'0')}.${result.month.toString().padLeft(2,'0')}.${result.year}";
-                              });
-                              _checkFormValidity();
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        _buildDetailOption(
-                          Icons.timer,
-                          "Zeit",
-                          timeController,
-                          () async {
-                            final DateTime? result = await selectDataCustom.showTimeDialog(context);
-                            if (result != null) {
-                              setState(() {
-                                selectedTime =
-                                    "${result.hour.toString().padLeft(2,'0')}:${result.minute.toString().padLeft(2,'0')}:00";
-                                timeController.text =
-                                    "${result.hour.toString().padLeft(2,'0')}:${result.minute.toString().padLeft(2,'0')} Uhr";
-                              });
-                              _checkFormValidity();
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 25),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: const Text(
-                      "Medien",
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  GestureDetector(
-                    onTap: () async {
-                      final pickedImage = await getImage();
-                      if (pickedImage != null) {
-                        setState( () {
-                          postImage = pickedImage;
-                        });
-                      }
-                    },
-                    child: Container(
-                      height: 150,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                          // color: const Color.fromARGB(255, 0, 0, 0),
-                          width: 2,
-                        ),
-                        color: Colors.white,
-                      ),
-                      child: postImage != null
-                        ? Row(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(4.0), // padding on all sides
-                                child: ClipRRect(
-                                  borderRadius: const BorderRadius.all(Radius.circular(8)),
-                                  child: AspectRatio(
-                                    aspectRatio: 1 / 1, // 1:1 ratio
-                                    child: Image.file(
-                                      postImage!,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          )
-                        : Center(
-                            child: Text(
-                              "Bilder hinzufügen",
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ),
-                    ),
-                  ),
-                  const SizedBox(height: 25),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: const Text(
-                      "Einschränkungen",
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              "Teilnehmen auf Anfrage",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: formControls.buildSwitch(
-                              value: joinRequestActive,
-                              onChanged: (newValue) {
-                                setState(() {
-                                  joinRequestActive = newValue;
-                                });
-                              },
-                            ),
-                          ),
-                        ]
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              "Nur sichtbar für Follower",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: formControls.buildSwitch(
-                              value: visibleForFollowersActive,
-                              onChanged: (newValue) {
-                                setState(() {
-                                  visibleForFollowersActive = newValue;
-                                });
-                              },
-                            ),
-                          ),
-                        ]
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              "Nur sichtbar für Flinta",
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: formControls.buildSwitch(
-                              value: visibleForFlintaActive,
-                              onChanged: (newValue) {
-                                setState(() {
-                                  visibleForFlintaActive = newValue;
-                                });
-                              },
-                            ),
-                          ),
-                        ]
-                      )
-                    ]
-                  ),
-                  const SizedBox(height: 25),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: const Text(
-                      "Standort",
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: townController,
-                    decoration: InputDecoration(
-                      labelText: "Stadt eingeben",
-                      labelStyle: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                      ),
-                      hintText: "z.B. Erfurt",
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Colors.black,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                    onSubmitted: (value) async {
-                      if (value.isEmpty) return;
-                      final coordinates = await mapService.getCoordinatesFromTown(value);
-                      if (coordinates != null) {
-                        String? townReturned = await mapService.getTownFromCoordinates(coordinates.latitude, coordinates.longitude);
-                        setState(() {
-                          mapCenter = coordinates; // update map in UI
-                          postTown = townReturned;
-                        });
-                        mapController.move(coordinates, 13);
-                        _checkFormValidity();
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: streetController,
-                    decoration: InputDecoration(
-                      labelText: "Adresse eingeben (optional)",
-                      labelStyle: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                      ),
-                      hintText: "z.B. Drachengasse 2",
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Colors.grey),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: Colors.black,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                    onSubmitted: (value) async {
-                      if (value.isEmpty) return;
-                      final coordinates = await mapService.getCoordinatesFromTown(value);
-                      if (coordinates != null) {
-                        String? townReturned = await mapService.getTownFromCoordinates(coordinates.latitude, coordinates.longitude);
-                        setState(() {
-                          mapCenter = coordinates; // update map in UI
-                          postTown = townReturned;
-                        });
-                        mapController.move(coordinates, 13);
-                        _checkFormValidity();
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 15),
-                  // flutter map
-                  ClipRRect(
-                    child:
-                      _buildMap()
-                  ),
-                ]
-              )
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 60),
-            child: ElevatedButton(
-              onPressed: () async {
-                if (!_canSubmit) return; // early exit if not allowed
-
-                bool success = await addPostToDatabase();
-                if (!mounted) return;
-
-                if (success) {
-                  Navigator.pop(context, true);
-                } else {
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      backgroundColor: Colors.white,
-                      surfaceTintColor: Colors.transparent,
-                      elevation: 0,
-                      title: const Text(
-                        "Fehler",
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      content: const Text(
-                        "Post konnte nicht erstellt werden",
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 15,
-                        ),
-                      ),
-                      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      actions: [
-                        TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.black,
-                          ),
-                          onPressed: () => Navigator.of(ctx).pop(),
-                          child: const Text(
-                            "OK",
-                            style: TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: child!,
                   );
                 }
+              );
+              if (result != null) {
+                setState(() => date = result);
+                _validate();
+              }
+            },
+            onPickTime: () async {
+              final result = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay.now(),
+                builder: (context, child) {
+                  return Theme(
+                    data: Theme.of(context).copyWith(
+                      colorScheme: const ColorScheme.light(
+                        primary: Colors.black, // active elements
+                        onPrimary: Colors.white,
+                        surface: Colors.white,
+                        onSurface: Colors.black,
+                      ),
+                      dialogBackgroundColor: Colors.white,
+                    ),
+                    child: child!,
+                  );
+                },
+              );
+              if (result != null) {
+                setState(() => time = result);
+                _validate();
+              }
+            },
+            date: date,
+            time: time,
+            missingField: missingField,
+          ),
+
+          const SizedBox(height: 12),
+
+          /// 🔽 DETAILS
+          ExpandableCard(
+            title: "Details",
+            child: _DetailsSection(
+              activity: activity,
+
+              distance: distance,
+              paceSeconds: paceSeconds,
+              speed: speed,
+
+              onDistanceChanged: (val) {
+                setState(() => distance = val);
+                _validate();
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _canSubmit
-                    ? const Color.fromARGB(255, 165, 62, 255) // enabled violet
-                    : const Color.fromARGB(255, 236, 212, 247), // lighter violet
-                minimumSize: const Size.fromHeight(50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+
+              onPaceChanged: (val) {
+                setState(() => paceSeconds = val);
+                _validate();
+              },
+
+              onSpeedChanged: (val) {
+                setState(() => speed = val);
+                _validate();
+              },
+
+              onPickDistance: () {
+                // optional dialog trigger if you use one
+              },
+            ),
+          ),
+
+          /// 📍 LOCATION
+          ExpandableCard(
+            title: "Standort",
+            isError: missingField == "location",
+            child: _LocationSection(
+              mapController: mapController,
+              mapCenter: mapCenter,
+              mapUrl: mapUrl,
+              mapReady: mapReady,
+
+              onMapReady: () {
+                if (!mapReady) {
+                  setState(() => mapReady = true);
+                }
+              },
+
+              townController: townController,
+
+              onTownSubmitted: (value) async {
+                if (value.isEmpty) return;
+
+                setState(() {
+                  mapReady = false; // reset map readyness
+                });
+
+                final coords = await mapService.getCoordinatesFromTown(value);
+                final town = await mapService.getTownFromCoordinates(coords!.latitude, coords.longitude);
+
+                setState(() {
+                  mapCenter = coords;
+                  postTown = town;
+                });
+
+                mapController.move(coords, 13);
+              },
+
+              onLocationChanged: (point) {
+                setState(() {
+                  mapCenter = point;
+                });
+              },
+
+              onHelpPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (_) => const AlertDialog(
+                    title: Text("Standort Hilfe"),
+                    content: Text(
+                      "Tippe einen Ort ein oder setze den Pin direkt auf der Karte.",
+                    ),
+                  ),
+                );
+              },
+            )
+          ),
+
+          /// 🖼 MEDIA
+          ExpandableCard(
+            title: "Medien",
+            child: _MediaSection(
+              image: postImage,
+              onPickImage: () {
+                // trigger image picker
+                _pickImage();
+              },
+            ),
+          ),
+
+          /// ⚙️ SETTINGS
+          ExpandableCard(
+            title: "Sichtbarkeit",
+            child: _SettingsSection(
+              joinMode: joinMode,
+              onJoinModeChanged: (val) {
+                // handle join mode change
+                setState(() => joinMode = val);
+              },
+            ),
+          ),
+
+          /// 🚀 BUTTON
+          SafeArea(
+            top: false, // only care about bottom
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(0, 0, 0, 16),
+              child: ElevatedButton(
+                onPressed: isLoading ? null : () async {
+                  
+                  // Basic validation
+                  final validationError = _getValidationError();
+                  if (validationError != null) {
+                    setState(() {
+                      missingField = validationError;
+                    });
+                    _showMissingFields(validationError);
+                    return;
+                  }
+
+                  // Time validation (at least 1 hour in future)
+                  if (!_isAtLeastOneHourInFuture()) {
+                    setState(() {
+                      missingField = "time"; // 👈 highlight time field
+                    });
+
+                    _showMissingFields("timeTooSoon"); // custom key
+                    return;
+                  }
+
+                  // // No media warning
+                  // if (postImage == null) {
+                  //   final proceed = await _confirmWithout();
+                  //   if (!proceed) return;
+                  // }
+
+                  setState(() {
+                    missingField = null;
+                  });
+
+                  // future business rule (premium limit)
+                  if (isBlockedByLimit) {
+                    _showLimitDialog();
+                    return;
+                  }
+
+                  setState(() => isLoading = false);
+                  bool success = await addPostToDatabase();
+                  setState(() => isLoading = false);
+
+                  if (!mounted) return;
+                  if (success) {
+                    Navigator.pop(context, true);
+                  }
+                  else {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: Colors.white,
+                        surfaceTintColor: Colors.transparent,
+                        elevation: 0,
+                        title: const Text(
+                          "Fehler",
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        content: const Text(
+                          "Post konnte nicht erstellt werden",
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 15,
+                          ),
+                        ),
+                        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        actions: [
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.black,
+                            ),
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            child: const Text(
+                              "OK",
+                              style: TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  // backgroundColor: canSubmit
+                  //     ? const Color.fromARGB(255, 165, 62, 255) // enabled violet
+                  //     : const Color.fromARGB(255, 236, 212, 247), // lighter violet
+                  // backgroundColor: canSubmit
+                  //     ? const Color.fromARGB(255, 0, 0, 0) // enabled violet
+                  //     : const Color.fromARGB(255, 175, 175, 175), // lighter violet
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: isLoading
+                  ? CircularProgressIndicator(color: Colors.white)
+                  : Text("Aktivität planen",
+                  style: TextStyle(fontSize: 16),
                 ),
               ),
-              child: const Text(
-                "Post erstellen",
-                style: TextStyle(fontSize: 16),
-              ),
             ),
-          )
+          ),
         ],
       ),
     );
