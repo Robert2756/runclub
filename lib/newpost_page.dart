@@ -24,6 +24,7 @@ class _BasicSection extends StatelessWidget {
   final String? missingField;
   final ValueChanged<int?> onPaceChanged;
   final ValueChanged<int?> onSpeedChanged;
+  final bool isBlockedByLimit;
 
   const _BasicSection({
     required this.titleController,
@@ -39,6 +40,7 @@ class _BasicSection extends StatelessWidget {
     required this.missingField,
     required this.onPaceChanged,
     required this.onSpeedChanged,
+    required this.isBlockedByLimit,
   });
 
   Widget _activityField(BuildContext context) {
@@ -204,6 +206,32 @@ class _BasicSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        if (isBlockedByLimit)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 18, color: Colors.red),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "Du hast bereits 2 aktive Aktivitäten. Upgrade auf RunClub Pro oder warte bis eine Aktivität endet.",
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.red.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
         /// 📝 TITLE
         TextField(
@@ -525,51 +553,36 @@ class _LocationSection extends StatelessWidget {
   });
 
   Widget _buildTownField(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: townController,
-            textInputAction: TextInputAction.search,
-            onSubmitted: onTownSubmitted,
-            decoration: InputDecoration(
-              hintText: "Ort eingeben (z.B. Erfurt)",
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 12,
-              ),
-              filled: true,
-              fillColor: Colors.grey.shade100,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              prefixIcon: const Icon(Icons.search, size: 20),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        children: [
+          const Icon(Icons.search, size: 20, color: Colors.grey),
 
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                onPressed: () => onTownSubmitted(townController.text),
+          const SizedBox(width: 8),
+
+          Expanded(
+            child: TextField(
+              controller: townController,
+              textInputAction: TextInputAction.search,
+              onSubmitted: onTownSubmitted,
+              decoration: const InputDecoration(
+                hintText: "Ort suchen (z.B. Erfurt)",
+                border: InputBorder.none,
               ),
             ),
           ),
-        ),
 
-        const SizedBox(width: 4),
-
-        // /// subtle help button
-        // GestureDetector(
-        //   onTap: onHelpPressed,
-        //   child: const Padding(
-        //     padding: EdgeInsets.symmetric(horizontal: 4),
-        //     child: Icon(
-        //       Icons.help_outline,
-        //       size: 18, // 👈 real small
-        //       color: Colors.grey,
-        //     ),
-        //   ),
-        // ),
-      ],
+          IconButton(
+            icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+            onPressed: () => onTownSubmitted(townController.text),
+          ),
+        ],
+      ),
     );
   }
 
@@ -633,43 +646,54 @@ class _LocationSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildTownField(context),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTownField(context),
 
-        const SizedBox(height: 12),
+          const SizedBox(height: 14),
 
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Column(
-            children: [ 
-              Stack(
-                children: [
-                  _buildMap(),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              children: [
+                _buildMap(),
 
-                  if (!mapReady)
-                    Positioned.fill(
-                      child: Container(
-                        color: Colors.grey.shade200,
-                        child: const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                if (!mapReady)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withOpacity(0.04),
+                      child: const Center(
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
                         ),
                       ),
                     ),
-                ],
-              ),
-              Text(
-                "Wähle wenn möglich öffentliche Treffpunkte beim Treffen mit fremden Personen.",
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade600,
-                ),
-              ),
-            ],
-          )
-        ),
-      ],
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          Text(
+            "Treffpunkte an öffentlichen Orten wählen, wenn du mit neuen Personen unterwegs bist.",
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1098,9 +1122,11 @@ class _TopToastState extends State<_TopToast>
 
 enum SoftWarning {
   media,
+  stats,
   distance,
   pace,
   speed,
+  none,
 }
 
 class CreatePostPageV2 extends StatefulWidget {
@@ -1140,6 +1166,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
   bool isBlockedByLimit = false; // future premium rule
   String? missingMessage;
   String? missingField;
+  bool isLimitLoading = true;
 
   // Widget _missingInfoBanner(String message) {
   //   return AnimatedContainer(
@@ -1189,29 +1216,39 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
     });
   }
 
-  // SoftWarning _getSoftWarning() {
-  //   final mediaMissing = postImage == null;
-  //   final statsMissing = missingStats;
+  SoftWarning _getSoftWarning() {
+    final mediaMissing = postImage == null;
+    final statsMissing = activity == "Laufen" ? (paceSeconds == null && distance == null) : (speed == null && distance == null);
+    final distanceMissing = distance == null;
+    final paceMissing = activity == "Laufen" && paceSeconds == null;
+    final speedMissing = activity == "Radfahren" && speed == null;
 
-  //   if (mediaMissing && statsMissing) return SoftWarning.stats; 
-  //   // 👆 bewusst: stats is more "actionable" than media
+    if (mediaMissing && statsMissing) return SoftWarning.stats; 
+    if (statsMissing) return SoftWarning.stats;
+    if (distanceMissing) return SoftWarning.distance;
+    if (paceMissing) return SoftWarning.pace;
+    if (speedMissing) return SoftWarning.speed;
+    if (mediaMissing) return SoftWarning.media;
 
-  //   if (statsMissing) return SoftWarning.stats;
-  //   if (mediaMissing) return SoftWarning.media;
+    return SoftWarning.none;
+  }
 
-  //   return SoftWarning.none;
-  // }
-
-  // String _softWarningText(SoftWarning warning) {
-  //   switch (warning) {
-  //     case SoftWarning.media:
-  //       return "Kein Bild hinzugefügt. Trotzdem veröffentlichen?";
-  //     case SoftWarning.stats:
-  //       return "Keine Distanz oder Tempo angegeben. Trotzdem veröffentlichen?";
-  //     case SoftWarning.none:
-  //       return "";
-  //   }
-  // }
+  String _softWarningText(SoftWarning warning) {
+    switch (warning) {
+      case SoftWarning.media:
+        return "Kein Bild hinzugefügt. Trotzdem veröffentlichen?";
+      case SoftWarning.stats:
+        return "Keine Distanz oder Tempo angegeben. Trotzdem veröffentlichen?";
+      case SoftWarning.distance:
+        return "Keine Distanz angegeben. Trotzdem veröffentlichen?";
+      case SoftWarning.pace:
+        return "Kein Tempo angegeben. Trotzdem veröffentlichen?";
+      case SoftWarning.speed:
+        return "Keine Geschwindigkeit angegeben. Trotzdem veröffentlichen?";
+      case SoftWarning.none:
+        return "";
+    }
+  }
 
   Future<bool> addPostToDatabase() async {
     debugPrint("Date: $date");
@@ -1386,30 +1423,84 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
     return planned.isAfter(DateTime.now().add(const Duration(hours: 1)));
   }
 
-  // Future<bool> _confirmWithout() async {
-  //   final warning = _getSoftWarning();
+  Future<bool> _confirmWithout() async {
+    final warning = _getSoftWarning();
 
-  //   if (warning == SoftWarning.none) return true;
+    if (warning == SoftWarning.none) return true;
 
-  //   final proceed = await showDialog<bool>(
-  //     context: context,
-  //     builder: (_) => AlertDialog(
-  //       content: Text(_softWarningText(warning)),
-  //       actions: [
-  //         TextButton(
-  //           onPressed: () => Navigator.pop(context, false),
-  //           child: const Text("Abbruch"),
-  //         ),
-  //         ElevatedButton(
-  //           onPressed: () => Navigator.pop(context, true),
-  //           child: const Text("OK"),
-  //         ),
-  //       ],
-  //     ),
-  //   );
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        content: Text(
+          _softWarningText(warning),
+          style: const TextStyle(fontSize: 15),
+        ),
+        actionsPadding: const EdgeInsets.only(right: 12, bottom: 8),
+        actions: [
+          TextButton(
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.black87,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Abbruch"),
+          ),
 
-  //   return proceed ?? false;
-  // }
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+
+    return proceed ?? false;
+  }
+
+  Future<int> checkNumberActivePosts() async {
+    try {
+      final response = await supabase
+          .from('posts')
+          .select(
+            'creator_id',
+          )
+          .eq('creator_id', supabase.auth.currentUser!.id)
+          .gt('date', DateTime.now().toIso8601String())
+          .count();
+
+      return response.count;
+    } catch (e) {
+      print("Error fetching active posts count: $e");
+      return 0;
+    }
+  }
+
+  Future<void> _loadLimit() async {
+    final numberActivePosts = await checkNumberActivePosts();
+
+    if (!mounted) return;
+
+    setState(() {
+      isBlockedByLimit = numberActivePosts >= 20;
+      isLimitLoading = false;
+    });
+  }
 
   @override
   void dispose() {
@@ -1435,7 +1526,8 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
   @override
   void initState() {
     super.initState();
-    titleController.addListener(_validate);
+    _loadLimit();
+    // titleController.addListener(_validate);
   }
 
   @override
@@ -1450,6 +1542,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
 
           /// 🔥 BASIC (always visible)
           _BasicSection(
+            isBlockedByLimit: isBlockedByLimit,
             titleController: titleController,
             descriptionController: descriptionController,
             dateController: dateController,
@@ -1635,120 +1728,113 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
               },
             ),
           ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: ElevatedButton(
+            onPressed: isBlockedByLimit || isLoading ? null : () async {
+              // future business rule (premium limit)
+              if (isBlockedByLimit) {
+                // _showLimitDialog();
+                return;
+              }
 
-          /// 🚀 BUTTON
-          SafeArea(
-            top: false, // only care about bottom
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(0, 0, 0, 16),
-              child: ElevatedButton(
-                onPressed: isLoading ? null : () async {
-                  
-                  // Basic validation
-                  final validationError = _getValidationError();
-                  if (validationError != null) {
-                    setState(() {
-                      missingField = validationError;
-                    });
-                    _showMissingFields(validationError);
-                    return;
-                  }
+              // Basic validation
+              final validationError = _getValidationError();
+              if (validationError != null) {
+                setState(() {
+                  missingField = validationError;
+                });
+                _showMissingFields(validationError);
+                return;
+              }
 
-                  // Time validation (at least 1 hour in future)
-                  if (!_isAtLeastOneHourInFuture()) {
-                    setState(() {
-                      missingField = "time"; // 👈 highlight time field
-                    });
+              // Time validation (at least 1 hour in future)
+              if (!_isAtLeastOneHourInFuture()) {
+                setState(() {
+                  missingField = "time"; // 👈 highlight time field
+                });
 
-                    _showMissingFields("timeTooSoon"); // custom key
-                    return;
-                  }
+                _showMissingFields("timeTooSoon"); // custom key
+                return;
+              }
 
-                  // // No media warning
-                  // if (postImage == null) {
-                  //   final proceed = await _confirmWithout();
-                  //   if (!proceed) return;
-                  // }
+              // Warning about missing fields
+              if (postImage == null) {
+                final proceed = await _confirmWithout();
+                if (!proceed) return;
+              }
 
-                  setState(() {
-                    missingField = null;
-                  });
+              setState(() {
+                missingField = null;
+              });
 
-                  // future business rule (premium limit)
-                  if (isBlockedByLimit) {
-                    _showLimitDialog();
-                    return;
-                  }
+              setState(() => isLoading = true);
+              bool success = await addPostToDatabase();
+              setState(() => isLoading = false);
 
-                  setState(() => isLoading = false);
-                  bool success = await addPostToDatabase();
-                  setState(() => isLoading = false);
-
-                  if (!mounted) return;
-                  if (success) {
-                    Navigator.pop(context, true);
-                  }
-                  else {
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        backgroundColor: Colors.white,
-                        surfaceTintColor: Colors.transparent,
-                        elevation: 0,
-                        title: const Text(
-                          "Fehler",
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        content: const Text(
-                          "Post konnte nicht erstellt werden",
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 15,
-                          ),
-                        ),
-                        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        actions: [
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.black,
-                            ),
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            child: const Text(
-                              "OK",
-                              style: TextStyle(fontWeight: FontWeight.w500),
-                            ),
-                          ),
-                        ],
+              if (!mounted) return;
+              if (success) {
+                Navigator.pop(context, true);
+              }
+              else {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: Colors.white,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 0,
+                    title: const Text(
+                      "Fehler",
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  // backgroundColor: canSubmit
-                  //     ? const Color.fromARGB(255, 165, 62, 255) // enabled violet
-                  //     : const Color.fromARGB(255, 236, 212, 247), // lighter violet
-                  // backgroundColor: canSubmit
-                  //     ? const Color.fromARGB(255, 0, 0, 0) // enabled violet
-                  //     : const Color.fromARGB(255, 175, 175, 175), // lighter violet
-                  minimumSize: const Size.fromHeight(50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    ),
+                    content: const Text(
+                      "Post konnte nicht erstellt werden",
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 15,
+                      ),
+                    ),
+                    actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    actions: [
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.black,
+                        ),
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text(
+                          "OK",
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                child: isLoading
-                  ? CircularProgressIndicator(color: Colors.white)
-                  : Text("Aktivität planen",
-                  style: TextStyle(fontSize: 16),
-                ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isBlockedByLimit
+                  ? const Color.fromARGB(255, 175, 175, 175)
+                  : const Color.fromARGB(255, 0, 0, 0),
+              minimumSize: const Size.fromHeight(50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
+            child: isLoading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Text(
+                    "Aktivität planen",
+                    style: TextStyle(fontSize: 16),
+                  ),
           ),
-        ],
+        ),
       ),
     );
   }
