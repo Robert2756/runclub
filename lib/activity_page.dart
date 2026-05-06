@@ -458,6 +458,14 @@ class _ActivityPageState extends State<ActivityPage> {
               const SizedBox(height: 16),
               _buildDescription(),
               const SizedBox(height: 40),
+              // 👉 INSERT MAP HERE
+              if (post!.latitude != null && post!.longitude != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: _buildMap(initialZoom: 13, showMarker: true),
+                ),
+                const SizedBox(height: 22),
+              ],
             ]),
           ),
         ),
@@ -962,43 +970,43 @@ class _ActivityPageState extends State<ActivityPage> {
               children: [
                 _buildHero(),
 
-                // 👉 FLOATING PREVIEW LAYER (important)
-                if (post!.latitude != null && post!.longitude != null)
-                  Positioned(
-                    top: sheetTopY - 95,
-                    right: 16,
-                    child: _mode == ActivityMode.chat
-                        ? const SizedBox()
-                        : SheetPreview(
-                            controller: _sheetController,
-                            child: GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _mapPrimary = !_mapPrimary;
-                                });
-                              },
-                              child: Container(
-                                width: 80,
-                                height: 80,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      blurRadius: 12,
-                                      color: Colors.black.withOpacity(0.25),
-                                    ),
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: _mapPrimary
-                                      ? _buildMap()
-                                      : Image.network(post!.imgurl!),
-                                ),
-                              ),
-                            ),
-                          ),
-                  ),
+                // // 👉 FLOATING PREVIEW LAYER (important)
+                // if (post!.latitude != null && post!.longitude != null)
+                //   Positioned(
+                //     top: sheetTopY - 95,
+                //     right: 16,
+                //     child: _mode == ActivityMode.chat
+                //         ? const SizedBox()
+                //         : SheetPreview(
+                //             controller: _sheetController,
+                //             child: GestureDetector(
+                //               onTap: () {
+                //                 setState(() {
+                //                   _mapPrimary = !_mapPrimary;
+                //                 });
+                //               },
+                //               child: Container(
+                //                 width: 80,
+                //                 height: 80,
+                //                 decoration: BoxDecoration(
+                //                   borderRadius: BorderRadius.circular(16),
+                //                   boxShadow: [
+                //                     BoxShadow(
+                //                       blurRadius: 12,
+                //                       color: Colors.black.withOpacity(0.25),
+                //                     ),
+                //                   ],
+                //                 ),
+                //                 child: ClipRRect(
+                //                   borderRadius: BorderRadius.circular(16),
+                //                   child: _mapPrimary
+                //                       ? _buildMap()
+                //                       : Image.network(post!.imgurl!),
+                //                 ),
+                //               ),
+                //             ),
+                //           ),
+                //   ),
 
                 DraggableScrollableSheet(
                   // key: ValueKey(_mode),
