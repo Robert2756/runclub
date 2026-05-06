@@ -71,7 +71,6 @@ class _ActivityPageState extends State<ActivityPage> {
   bool loading = false;
   bool _joined = false;
   bool _loadingJoin = false;
-  bool _mapPrimary = false;
   List<String> participantAvatars = [];
   List<String> debugParticipants = [
     'https://i.pravatar.cc/40?img=11',
@@ -87,6 +86,7 @@ class _ActivityPageState extends State<ActivityPage> {
   static ActivityMode _lastMode = ActivityMode.details;
   final DraggableScrollableController _sheetController =
     DraggableScrollableController();
+  bool _mapPrimary = false;
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
@@ -271,6 +271,7 @@ class _ActivityPageState extends State<ActivityPage> {
     super.initState();
     loadActivity();
     _mode = _lastMode;
+    // fetchProfileImage();
   }
 
   Widget _buildMap({double initialZoom = 13, bool showMarker = true}) {
@@ -324,89 +325,53 @@ class _ActivityPageState extends State<ActivityPage> {
     );
   }
 
-  // Widget _buildHero() {
-  //   final size = MediaQuery.of(context).size;
-  //   final heroHeight = size.height * 0.45;
-
-  //   final extent = _sheetController.isAttached
-  //       ? _sheetController.size
-  //       : 0.60;
-
-  //   final t = ((extent - 0.60) / (0.88 - 0.60)).clamp(0.0, 1.0);
-
-  //   final map = _buildMap(initialZoom: 13, showMarker: true);
-  //   final image = post!.imgurl != null
-  //       ? Image.network(post!.imgurl!, fit: BoxFit.cover)
-  //       : map;
-
-  //   return SizedBox(
-  //     height: heroHeight,
-  //     width: double.infinity,
-  //     child: Stack(
-  //       children: [
-  //         // =========================
-  //         // MAIN LAYER (swaps roles)
-  //         // =========================
-  //         AnimatedPositioned(
-  //           duration: const Duration(milliseconds: 350),
-  //           curve: Curves.easeOutCubic,
-  //           top: _mapPrimary ? 0 : 0,
-  //           left: _mapPrimary ? 0 : 0,
-  //           right: _mapPrimary ? 0 : 0,
-  //           bottom: _mapPrimary ? 0 : 0,
-  //           child: ClipRRect(
-  //             borderRadius: BorderRadius.circular(_mapPrimary ? 0 : 0),
-  //             // child: GestureDetector(
-  //             //   onTap: () {
-  //             //     setState(() {
-  //             //       _mapPrimary = !_mapPrimary;
-  //             //     });
-  //             //   },
-  //             //   child: _mapPrimary ? map : image,
-  //             // ),
-  //             child: _mapPrimary ? map : image,
-  //           ),
-  //         ),
-
-  //         // =========================
-  //         // gradient overlay always on top
-  //         // =========================
-  //         Container(
-  //           decoration: BoxDecoration(
-  //             gradient: LinearGradient(
-  //               begin: Alignment.bottomCenter,
-  //               end: Alignment.topCenter,
-  //               colors: [
-  //                 Colors.black.withOpacity(0.55),
-  //                 Colors.transparent,
-  //               ],
-  //             ),
-  //           ),
-  //         ),
-  //       ],
-  //     ),
-  //   );
-  // }
-
   Widget _buildHero() {
     final size = MediaQuery.of(context).size;
-    final heroHeight = size.height * 0.45; // feels modern (airbnb-ish)
+    final heroHeight = size.height * 0.45;
+
+    final extent = _sheetController.isAttached
+        ? _sheetController.size
+        : 0.60;
+
+    final t = ((extent - 0.60) / (0.88 - 0.60)).clamp(0.0, 1.0);
+
+    final map = _buildMap(initialZoom: 13, showMarker: true);
+    final image = post!.imgurl != null
+        ? Image.network(post!.imgurl!, fit: BoxFit.cover)
+        : map;
 
     return SizedBox(
       height: heroHeight,
       width: double.infinity,
       child: Stack(
-        fit: StackFit.expand,
         children: [
-          // background
-          post!.imgurl != null
-              ? Image.network(
-                  post!.imgurl!,
-                  fit: BoxFit.cover,
-                )
-              : _buildMap(initialZoom: 13),
+          // =========================
+          // MAIN LAYER (swaps roles)
+          // =========================
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+            top: _mapPrimary ? 0 : 0,
+            left: _mapPrimary ? 0 : 0,
+            right: _mapPrimary ? 0 : 0,
+            bottom: _mapPrimary ? 0 : 0,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(_mapPrimary ? 0 : 0),
+              // child: GestureDetector(
+              //   onTap: () {
+              //     setState(() {
+              //       _mapPrimary = !_mapPrimary;
+              //     });
+              //   },
+              //   child: _mapPrimary ? map : image,
+              // ),
+              child: _mapPrimary ? map : image,
+            ),
+          ),
 
-          // gradient overlay (stronger bottom readability)
+          // =========================
+          // gradient overlay always on top
+          // =========================
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -474,8 +439,9 @@ class _ActivityPageState extends State<ActivityPage> {
           _mode = target;
           _lastMode = target;
         });
+
         _sheetController.animateTo(
-          target == ActivityMode.chat ? 0.88 : 0.60,
+          target == ActivityMode.chat ? 0.88 : 0.70,
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
         );
@@ -533,31 +499,9 @@ class _ActivityPageState extends State<ActivityPage> {
               ),
             ),
           ),
-          _modeSwitch(),
 
-          // // 🔀 MODE SWITCH (NEW)
-          // _modeSwitch(),
-          // GestureDetector(
-          //   behavior: HitTestBehavior.translucent,
-          //   onVerticalDragUpdate: _handleDragUpdate,
-          //   onVerticalDragEnd: _handleDragEnd,
-          //   child: Column(
-          //     children: [
-          //       Center(
-          //         child: Container(
-          //           margin: const EdgeInsets.only(top: 10, bottom: 10),
-          //           width: 40,
-          //           height: 4,
-          //           decoration: BoxDecoration(
-          //             color: Colors.grey.shade300,
-          //             borderRadius: BorderRadius.circular(10),
-          //           ),
-          //         ),
-          //       ),
-          //       _modeSwitch(),
-          //     ],
-          //   ),
-          // ),
+          // 🔀 MODE SWITCH (NEW)
+          _modeSwitch(),
 
           const SizedBox(height: 8),
 
@@ -574,65 +518,24 @@ class _ActivityPageState extends State<ActivityPage> {
     );
   }
 
-  Future<void> _animateWhenReady(double target, {bool animate = true}) async {
-    debugPrint("🟣 ANIMATE REQUESTED | attached=${_sheetController.isAttached}");
-    debugPrint("🎯 target=$target animate=$animate");
-    int attempts = 0;
-    while (!_sheetController.isAttached) {
-      attempts++;
-      debugPrint("⏳ waiting for attachment... attempt $attempts");
-      await Future.delayed(const Duration(milliseconds: 16));
-    }
-
-    if (animate) {
-      _sheetController.animateTo(
-        target,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
-      debugPrint("✅ animation done");
-    } else {
-      _sheetController.jumpTo(target);
-    }
-  }
-
-  void _handleDragUpdate(DragUpdateDetails details) {
-    if (_mode != ActivityMode.details) return;
-    if (!_sheetController.isAttached) return;
-
-    final delta =
-        -details.primaryDelta! / MediaQuery.of(context).size.height;
-
-    final newSize = (_sheetController.size + delta).clamp(0.60, 0.88);
-
-    _sheetController.jumpTo(newSize);
-  }
-
-  void _handleDragEnd(DragEndDetails details) {
-    if (_mode != ActivityMode.details) return; // 🚨 IMPORTANT
-    if (!_sheetController.isAttached) return;
-
-    final velocity = details.primaryVelocity ?? 0;
-    final current = _sheetController.size;
-
-    double target;
-
-    if (velocity < -200) {
-      target = 0.88;
-    } else if (velocity > 200) {
-      target = 0.60;
-    } else {
-      target = (current - 0.60).abs() < (current - 0.88).abs()
-          ? 0.60
-          : 0.88;
-    }
-
-    _sheetController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutCubic,
-    );
-  }
+  // Widget _buildChat(ScrollController controller) {
+  //   return Column(
+  //     children: [
+  //       Expanded(
+  //         child: ListView(
+  //           controller: controller,
+  //           padding: const EdgeInsets.all(12),
+  //           children: const [
+  //             // _ChatMessage("Alex: bringing water 👍"),
+  //             // _ChatMessage("Mia: 5 min late ⏱"),
+  //             // _ChatMessage("Jonas: meet at entrance"),
+  //           ],
+  //         ),
+  //       ),
+  //       // _chatInput(),
+  //     ],
+  //   );
+  // }
 
   Widget _buildHeader() {
     final theme = Theme.of(context);
@@ -954,7 +857,6 @@ class _ActivityPageState extends State<ActivityPage> {
 
     // final t = ((sheetSize - 0.60) / (0.88 - 0.60)).clamp(0.0, 1.0);
     // final previewOpacity = 1.0 - t;
-
     return Scaffold(
       body: post == null
           ? const Center(child: CircularProgressIndicator())
@@ -1002,12 +904,9 @@ class _ActivityPageState extends State<ActivityPage> {
 
                 DraggableScrollableSheet(
                   // key: ValueKey(_mode),
-                  initialChildSize: _mode == ActivityMode.chat ? 0.88 : 0.60,
-                  minChildSize: _mode == ActivityMode.chat ? 0.88 : 0.60,
+                  initialChildSize: _mode == ActivityMode.chat ? 0.88 : 0.64,
+                  minChildSize: _mode == ActivityMode.chat ? 0.88 : 0.64,
                   maxChildSize: 0.88,
-                  // snap: true,
-                  // snapSizes: [0.60, 0.88],
-                  // expand: true,
                   builder: (context, scrollController) {
                     return _buildContent(scrollController);
                   },
