@@ -11,6 +11,7 @@ import 'widgets/participant_stack.dart';
 import 'services/data_formatter.dart';
 import 'participant_page.dart';
 import 'widgets/chat.dart';
+import 'package:url_launcher/url_launcher.dart';
 final supabase = Supabase.instance.client;
 
 enum ActivityMode {
@@ -50,6 +51,16 @@ class SheetPreview extends StatelessWidget {
   }
 }
 
+class ActivityConfig {
+  final String statLabel;
+  final String Function(Post post) statValue;
+
+  const ActivityConfig({
+    required this.statLabel,
+    required this.statValue,
+  });
+}
+
 class ActivityPage extends StatefulWidget {
   final String postId;
   final int? userDistance;
@@ -72,6 +83,7 @@ class _ActivityPageState extends State<ActivityPage> {
   bool _joined = false;
   bool _loadingJoin = false;
   bool _mapPrimary = false;
+  bool get _canSeeExactLocation => _joined;
   List<String> participantAvatars = [];
   List<String> debugParticipants = [
     'https://i.pravatar.cc/40?img=11',
@@ -89,6 +101,7 @@ class _ActivityPageState extends State<ActivityPage> {
     DraggableScrollableController();
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+  // final mapUrl = 'https://api.maptiler.com/maps/backdrop/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
@@ -124,6 +137,7 @@ class _ActivityPageState extends State<ActivityPage> {
       activity: response['activity'],
       distance: response['distance'],
       pace: response['pace'],
+      speed: response['speed'],
       date: response['date'],
       time: response['time'],
       latitude: (response['latitude'] as num?)?.toDouble(),
@@ -273,54 +287,102 @@ class _ActivityPageState extends State<ActivityPage> {
     _mode = _lastMode;
   }
 
+  Widget _buildLocationHeader() {
+    final isUnlocked = _canSeeExactLocation;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+
+        // TITLE ROW
+        Row(
+          children: [
+            const Icon(
+              Icons.location_on_outlined,
+              size: 18,
+              color: Colors.grey,
+            ),
+            const SizedBox(width: 6),
+
+            Expanded(
+              child: Text(
+                isUnlocked
+                    ? (post!.town ?? "Standort")
+                    : "Standort wird nach Beitritt freigeschaltet",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isUnlocked ? Colors.black : Colors.grey.shade600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 4),
+
+        // SECONDARY INFO
+        Text(
+          isUnlocked
+              ? "Exakter Treffpunkt sichtbar"
+              : "Grobe Region sichtbar",
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey.shade600,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMap({double initialZoom = 13, bool showMarker = true}) {
     final location = (post!.latitude != null && post!.longitude != null)
         ? LatLng(post!.latitude!, post!.longitude!)
         : LatLng(0.0, 0.0);
 
-    return AspectRatio(
-      aspectRatio: post!.imgurl != null ? 1 / 1 : 4 / 3,
-      child: FlutterMap(
-        options: MapOptions(
-          initialCenter: location,
-          initialZoom: initialZoom,
-          interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.none,
-          ),
+    return FlutterMap(
+      options: MapOptions(
+        initialCenter: location,
+        initialZoom: initialZoom,
+        interactionOptions: const InteractionOptions(
+          flags: InteractiveFlag.none,
         ),
-        children: [
-          TileLayer(
-            urlTemplate: mapUrl,
-            userAgentPackageName: 'com.robert.app',
-          ),
-          if (showMarker && post!.latitude != null && post!.longitude != null)
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: mapUrl,
+          userAgentPackageName: 'com.robert.app',
+        ),
+        if (showMarker && post!.latitude != null && post!.longitude != null)
+          if (!_canSeeExactLocation)
             MarkerLayer(
               markers: [
-                if (post!.latitude != null && post!.longitude != null)
-                  Marker(
-                    point: LatLng(post!.latitude!, post!.longitude!),
-                    width: 42,
-                    height: 46,
-                    alignment: Alignment.topCenter,
-                    child: CustomPaint(
-                      painter: RunMarkerPainter(),
-                      child: const SizedBox(
-                        width: 42,
-                        height: 46,
-                        child: Center(
-                          child: Icon(
-                            Icons.directions_run,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                Marker(
+                  point: location,
+                  width: 100,
+                  height: 100,
+                  child: _blurredLocationField(),
+                ),
               ],
-            ),
-        ],
-      ),
+            )
+          else
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: location,
+                  width: 40,
+                  height: 40,
+                  child: const Icon(
+                    Icons.location_on,
+                    color: Colors.red,
+                    size: 30,
+                  ),
+                ),
+              ],
+            )
+      ],
     );
   }
 
@@ -443,29 +505,429 @@ class _ActivityPageState extends State<ActivityPage> {
   //   );
   // }
 
+  Future<void> openInMaps(double lat, double lng) async {
+    final url = Uri.parse(
+      "https://www.google.com/maps/search/?api=1&query=$lat,$lng",
+    );
+
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Widget _blurredLocationField() {
+    return Container(
+      width: 140,
+      height: 140,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            Colors.blue.withOpacity(0.25),
+            Colors.blue.withOpacity(0.05),
+            Colors.transparent,
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.2),
+            blurRadius: 40,
+            spreadRadius: 15,
+          ),
+        ],
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.blur_on,
+          color: Colors.white70,
+          size: 18,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlurredLocationMarker() {
+    return Container(
+      width: 90,
+      height: 90,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.blue.withOpacity(0.15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.25),
+            blurRadius: 30,
+            spreadRadius: 10,
+          ),
+        ],
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.location_on_outlined,
+          color: Colors.white,
+          size: 18,
+        ),
+      ),
+    );
+  }
+
+  // Widget _buildLocationCard() {
+  //   return Column(
+  //     crossAxisAlignment: CrossAxisAlignment.start,
+  //     children: [
+  //       const Text(
+  //         "Ort",
+  //         style: TextStyle(
+  //           fontSize: 16,
+  //           fontWeight: FontWeight.w700,
+  //         ),
+  //       ),
+
+  //       const SizedBox(height: 10),
+
+  //       Row(
+  //         children: [
+  //           // PRIMARY
+  //           Text(
+  //             post!.town ?? "Standort",
+  //             style: const TextStyle(
+  //               fontSize: 15,
+  //               fontWeight: FontWeight.w600,
+  //               letterSpacing: -0.2,
+  //             ),
+  //           ),
+
+  //           const SizedBox(width: 8),
+
+  //           // SEPARATOR (modern trick)
+  //           Container(
+  //             width: 4,
+  //             height: 4,
+  //             decoration: BoxDecoration(
+  //               color: Colors.grey.shade400,
+  //               shape: BoxShape.circle,
+  //             ),
+  //           ),
+
+  //           const SizedBox(width: 8),
+
+  //           // SECONDARY
+  //           Text(
+  //             "${post!.userdistance} m entfernt",
+  //             style: TextStyle(
+  //               fontSize: 13,
+  //               fontWeight: FontWeight.w500,
+  //               color: Colors.grey.shade600,
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //       // 👇 THIS is the safe layout boundary
+  //       AspectRatio(
+  //         aspectRatio: 1,
+  //         child: GestureDetector(
+  //           onTap: () {
+  //             openInMaps(post!.latitude!, post!.longitude!);
+  //           },
+
+  //           child: Container(
+  //             decoration: BoxDecoration(
+  //               borderRadius: BorderRadius.circular(26),
+  //             ),
+
+  //             child: ClipRRect(
+  //               borderRadius: BorderRadius.circular(26),
+
+  //               // 👇 IMPORTANT: no inner Stack inside Stack duplication
+  //               child: Stack(
+  //                 fit: StackFit.expand,
+  //                 children: [
+
+  //                   // MAP
+  //                   _buildMap(initialZoom: 14, showMarker: true),
+
+  //                   // GRADIENT OVERLAY
+  //                   IgnorePointer(
+  //                     child: Container(
+  //                       decoration: BoxDecoration(
+  //                         gradient: LinearGradient(
+  //                           begin: Alignment.bottomCenter,
+  //                           end: Alignment.center,
+  //                           colors: [
+  //                             Colors.black.withOpacity(0.35),
+  //                             Colors.transparent,
+  //                           ],
+  //                         ),
+  //                       ),
+  //                     ),
+  //                   ),
+  //                 ],
+  //               ),
+  //             ),
+  //           ),
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
+
+  Widget _buildLocationCard() {
+    final locked = !_canSeeExactLocation;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+          // MAP SECTION
+          SizedBox(
+            height: 210,
+            child: Stack(
+              children: [
+
+                // MAP
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(28),
+                  ),
+                  child: _buildMap(
+                    initialZoom: locked ? 11 : 14,
+                    showMarker: true,
+                  ),
+                ),
+
+                // DARK OVERLAY
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.55),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // FLOATING BADGE
+                Positioned(
+                  top: 14,
+                  right: 14,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          locked
+                              ? Icons.lock_outline
+                              : Icons.location_on,
+                          size: 15,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          locked
+                              ? "Approximate"
+                              : "Exact location",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // BOTTOM LOCATION INFO
+                Positioned(
+                  left: 18,
+                  right: 18,
+                  bottom: 18,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+
+                      Text(
+                        post!.town ?? "Location",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+
+                      const SizedBox(height: 4),
+
+                      Text(
+                        locked
+                            ? "Join to unlock meetup point"
+                            : "${post!.userdistance} m away",
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ACTIONS
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: locked
+                        ? null
+                        : () => openInMaps(
+                              post!.latitude!,
+                              post!.longitude!,
+                            ),
+                    icon: const Icon(Icons.navigation_outlined),
+                    label: const Text("Open in Maps"),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 12),
+
+                Container(
+                  height: 52,
+                  width: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const Icon(Icons.share_location_outlined),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+          Row(
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: Colors.black,
+              ),
+
+              const SizedBox(width: 8),
+
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.4,
+                ),
+              ),
+            ],
+          ),
+
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(left: 26),
+              child: Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ]
+        ],
+      ),
+    );
+  }
+
   Widget _buildDetails(ScrollController controller) {
+    final sheetT = (_sheetController.isAttached
+      ? _sheetController.size
+      : 0.60);
     return CustomScrollView(
       controller: controller,
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            80 + MediaQuery.of(context).padding.bottom,
+          ),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
               _buildHeader(),
+              _buildDescription(),
+              const SizedBox(height: 16),
               _buildQuickStats(),
-              const SizedBox(height: 22),
+              const SizedBox(height:16),
               _buildParticipants(),
               const SizedBox(height: 16),
-              _buildDescription(),
-              const SizedBox(height: 40),
               // 👉 INSERT MAP HERE
-              if (post!.latitude != null && post!.longitude != null) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: _buildMap(initialZoom: 13, showMarker: true),
-                ),
-                const SizedBox(height: 22),
-              ],
+              _sectionHeader(
+                icon: Icons.place_outlined,
+                title: "Treffpunkt",
+                subtitle: _joined
+                    ? "Exakter Treffpunkt sichtbar"
+                    : "Wird nach Beitritt freigeschaltet",
+              ),
+              if (post!.latitude != null && post!.longitude != null)
+                _buildLocationCard()
             ]),
           ),
         ),
@@ -520,6 +982,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
   Widget _buildContent(ScrollController controller) {
     return Container(
+      // padding: const EdgeInsets.only(bottom: 80),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(
@@ -642,6 +1105,116 @@ class _ActivityPageState extends State<ActivityPage> {
     );
   }
 
+  Widget _activityIcon(IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.6),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        icon,
+        color: Colors.white,
+        size: 18,
+      ),
+    );
+  }
+
+  Widget _buildFloatingJoinButton() {
+    if (_mode == ActivityMode.chat) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: _sheetController,
+      builder: (context, _) {
+        final size = _sheetController.isAttached
+            ? _sheetController.size
+            : 0.60;
+
+        final t = ((size - 0.70) / 0.18).clamp(0.0, 1.0);
+
+        return IgnorePointer(
+          ignoring: t < 0.05,
+          child: Opacity(
+            opacity: t,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: Container(
+                width: double.infinity,
+
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  4,
+                  20,
+                  MediaQuery.of(context).padding.bottom, // 👈 KEY FIX
+                ),
+
+                // 👇 white bottom background
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.97),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 24,
+                      offset: const Offset(0, -6),
+                    ),
+                  ],
+                ),
+
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    20,
+                    14,
+                    20,
+                    18,
+                  ),
+
+                  child: SizedBox(
+                    height: 56,
+
+                    child: ElevatedButton(
+                      onPressed:
+                          _loadingJoin ? null : toggleJoin,
+
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            _joined ? Colors.green : Colors.black,
+
+                        elevation: 0,
+
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+
+                      child: _loadingJoin
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              _joined
+                                  ? "Joined"
+                                  : "Join ${post?.activity?.toLowerCase() ?? ""}",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                                color: Colors.white,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildHeader() {
     final theme = Theme.of(context);
     return Container(
@@ -683,18 +1256,14 @@ class _ActivityPageState extends State<ActivityPage> {
                 ),
               ),
               const Spacer(),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.directions_run,
-                  color: Colors.white,
-                  size: 18,
-                ),
-              ),
+              if ({
+                "Run": Icons.directions_run,
+                "Bike": Icons.directions_bike,
+              }.containsKey(post!.activity))
+                _activityIcon({
+                  "Run": Icons.directions_run,
+                  "Bike": Icons.directions_bike,
+                }[post!.activity]!),
             ]
           ),
           const SizedBox(height: 10),
@@ -731,6 +1300,22 @@ class _ActivityPageState extends State<ActivityPage> {
   }
 
   Widget _buildQuickStats() {
+    final activityConfigs = {
+      "Run": ActivityConfig(
+        statLabel: "Pace",
+        statValue: (post) => post.pace != null
+            ? dataFormatter.formatPace(post.pace!)
+            : "-",
+      ),
+
+      "Bike": ActivityConfig(
+        statLabel: "Speed",
+        statValue: (post) => post.speed != null
+            ? "${post.speed} km/h"
+            : "-",
+      ),
+    };
+    final config = activityConfigs[post!.activity];
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -745,16 +1330,14 @@ class _ActivityPageState extends State<ActivityPage> {
                 child: _stat(
                   "Distanz",
                   post!.distance != null
-                      ? "${dataFormatter.formatDistance(post!.distance!)} km"
+                      ? dataFormatter.formatDistance(post!.distance!)
                       : "-",
                 ),
               ),
               Expanded(
                 child: _stat(
-                  "Pace",
-                  post!.pace != null
-                      ? dataFormatter.formatPace(post!.pace!)
-                      : "-",
+                  config?.statLabel ?? "-",
+                  config?.statValue(post!) ?? "-",
                 ),
               ),
             ],
@@ -764,9 +1347,9 @@ class _ActivityPageState extends State<ActivityPage> {
             children: [
               Expanded(
                 child: _stat(
-                  "Wochentag",
+                  "Tag",
                   (post!.date != null && post!.time != null)
-                      ? dataFormatter.formatWeekday(post!.date!, post!.time!)
+                      ? dataFormatter.formatActivityDate(DateTime.parse("${post!.date}T${post!.time!}"))
                       : "-",
                 )
               ),
@@ -903,24 +1486,27 @@ class _ActivityPageState extends State<ActivityPage> {
   Widget _buildDescription() {
     if ((post!.description ?? "").isEmpty) return const SizedBox();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Beschreibung",
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: 8),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // const Text(
+          //   "Beschreibung",
+          //   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          // ),
+          // const SizedBox(height: 8),
 
-        Text(
-          post!.description!,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey[800],
-            height: 1.4,
+          Text(
+            post!.description!,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[800],
+              height: 1.4,
+            ),
           ),
-        ),
-      ],
+        ],
+      )
     );
   }
 
@@ -1010,6 +1596,7 @@ class _ActivityPageState extends State<ActivityPage> {
 
                 DraggableScrollableSheet(
                   // key: ValueKey(_mode),
+                  controller: _sheetController,
                   initialChildSize: _mode == ActivityMode.chat ? 0.88 : 0.60,
                   minChildSize: _mode == ActivityMode.chat ? 0.88 : 0.60,
                   maxChildSize: 0.88,
@@ -1020,6 +1607,8 @@ class _ActivityPageState extends State<ActivityPage> {
                     return _buildContent(scrollController);
                   },
                 ),
+
+                _buildFloatingJoinButton(),
 
                 // 🔥 GLOBAL BACK BUTTON (always on top)
                 Positioned(

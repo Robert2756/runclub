@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 class DataFormatter {
   String formatPace(int secondsPerKm) {
     final minutes = secondsPerKm ~/ 60;
@@ -76,24 +78,27 @@ class DataFormatter {
     return "$hour:$minute";
   }
 
-  String formatWeekday(String date, String time) {
-    // Parse the date + time
-    final dt = DateTime.parse("${date}T$time");
+  String formatActivityDate(DateTime date) {
+    final now = DateTime.now();
 
-    // German weekday names
-    const weekdays = [
-      'Montag',
-      'Dienstag',
-      'Mittwoch',
-      'Donnerstag',
-      'Freitag',
-      'Samstag',
-      'Sonntag',
-    ];
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(date.year, date.month, date.day);
 
-    // Dart weekday: Monday = 1, Sunday = 7
-    final weekdayName = weekdays[dt.weekday - 1];
-    return weekdayName;
+    final difference = target.difference(today).inDays;
+
+    if (difference == 0) {
+      return "Today";
+    }
+
+    if (difference == 1) {
+      return "Tomorrow";
+    }
+
+    if (difference > 1 && difference < 7) {
+      return DateFormat('EEEE', 'de_DE').format(date); // Montag
+    }
+
+    return DateFormat('d MMM', 'de_DE').format(date); // 12 May
   }
 
 }

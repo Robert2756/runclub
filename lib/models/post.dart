@@ -7,6 +7,7 @@ class Post {
   final String? activity;
   final int? distance;
   final int? pace;
+  final int? speed;
   final String? date;
   final String? time;
   final double? latitude;
@@ -26,6 +27,7 @@ class Post {
     this.activity,
     this.distance,
     this.pace,
+    this.speed,
     this.date,
     this.time,
     this.latitude,
