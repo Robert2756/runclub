@@ -59,10 +59,20 @@ class Message {
 
 class ActivityChat extends StatefulWidget {
   final String activityId;
+  final bool initialJoined;
+  final ValueChanged<bool>? onJoinChanged;
+  final VoidCallback? onActiveRead;
+  final bool isActive;
+  final VoidCallback markUnread;
 
   const ActivityChat({
     super.key,
     required this.activityId,
+    required this.initialJoined,
+    this.onJoinChanged,
+    this.onActiveRead,
+    required this.isActive,
+    required this.markUnread,
   });
 
   @override
@@ -73,13 +83,12 @@ class _ActivityChatState extends State<ActivityChat> {
   final List<Message> _messages = [];
   final TextEditingController _inputController = TextEditingController();
 
-  late final RealtimeChannel _channel;
+  late bool _joined;
+  RealtimeChannel? _channel;
 
-  bool _loading = true;
+  bool _loading = false;
   bool _loadingMore = false;
   bool _hasMore = true;
-  bool _joined = false;
-  bool _checkingJoin = true;
   bool _loadingJoin = false;
 
   static const int _pageSize = 30;
@@ -87,38 +96,20 @@ class _ActivityChatState extends State<ActivityChat> {
   @override
   void initState() {
     super.initState();
+    _joined = widget.initialJoined;
     _bootstrap();
   }
 
   @override
   void dispose() {
-    _channel.unsubscribe();
+    _channel?.unsubscribe();
     _inputController.dispose();
     super.dispose();
   }
 
   Future<void> _bootstrap() async {
-    await checkIfJoined();
-
-    if (_joined) {
-      await _initChat();
-    }
-  }
-
-  Future<void> checkIfJoined() async {
-    final userId = supabase.auth.currentUser!.id;
-
-    final res = await supabase
-        .from('activity_participants')
-        .select('id')
-        .eq('post_id', widget.activityId)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-    setState(() {
-      _joined = res != null;
-      _checkingJoin = false;
-    });
+    if (!_joined) return;
+    await _initChat();
   }
 
   Future<void> _initChat() async {
@@ -139,6 +130,10 @@ class _ActivityChatState extends State<ActivityChat> {
         .eq('activity_id', widget.activityId)
         .order('created_at', ascending: false)
         .limit(_pageSize);
+
+    if (widget.isActive) {
+      widget.markUnread();
+    }
 
     final messages =
         (res as List).map((e) => Message.fromJson(e)).toList();
@@ -204,7 +199,7 @@ class _ActivityChatState extends State<ActivityChat> {
     if (!_joined) return;
     _channel = supabase.channel('activity-${widget.activityId}');
 
-    _channel.onPostgresChanges(
+    _channel?.onPostgresChanges(
       event: PostgresChangeEvent.insert,
       schema: 'public',
       table: 'activity_messages',
@@ -213,9 +208,15 @@ class _ActivityChatState extends State<ActivityChat> {
         column: 'activity_id',
         value: widget.activityId,
       ),
-      callback: (payload) {
+      callback: (payload) async {
         final msg = Message.fromJson(payload.newRecord);
+
         setState(() => _messages.insert(0, msg));
+
+        // if currently viewing chat
+        if (widget.isActive && _joined) {
+          widget.onActiveRead?.call();
+        }
       },
     ).subscribe();
   }
@@ -232,7 +233,6 @@ class _ActivityChatState extends State<ActivityChat> {
     _inputController.clear();
 
     final userId = supabase.auth.currentUser!.id;
-    debugPrint("DEBUG: $text");
 
     final temp = Message(
       id: "temp-${DateTime.now().millisecondsSinceEpoch}",
@@ -250,44 +250,42 @@ class _ActivityChatState extends State<ActivityChat> {
         'user_id': userId,
         'type': 'text',
         'content': text,
+        'created_at': DateTime.now().toIso8601String(),
       });
     } catch (e) {
       debugPrint("Failed sending message: $e");
     }
   }
 
-    Future<void> toggleJoin() async {
-      if (_loadingJoin) return; // prevent multiple taps
-      setState(() => _loadingJoin = true);
+  Future<void> toggleJoin() async {
+    if (_loadingJoin) return;
+    setState(() => _loadingJoin = true);
 
-      try {
-        if (!_joined) {
-          // join activity
-          await supabase.from('activity_participants').insert({
-            'post_id': widget.activityId,
-            'user_id': supabase.auth.currentUser!.id,
-          });
-        } else {
-          // optionally leave activity
-          await supabase.from('activity_participants')
-              .delete()
-              .eq('post_id', widget.activityId)
-              .eq('user_id', supabase.auth.currentUser!.id);
-        }
+    final userId = supabase.auth.currentUser!.id;
 
-        // toggle joined state -> update button UI immediately
-        setState(() => _joined = !_joined);
+    try {
+      await supabase.from('activity_participants').insert({
+        'post_id': widget.activityId,
+        'user_id': userId,
+        'last_read_at': null,
+      });
 
-        // // imediately refresh participant avatars after joining/leaving
-        // await fetchParticipantAvatars();
+      setState(() {
+        _joined = true;
+        widget.onJoinChanged?.call(true);
+      });
 
-      } catch (e) {
-        debugPrint('Error toggling join: $e');
-        // optionally show a SnackBar or toast
-      } finally {
+      await _bootstrap();
+      widget.markUnread();
+
+    } catch (e) {
+      debugPrint("Join failed: $e");
+    } finally {
+      if (mounted) {
         setState(() => _loadingJoin = false);
       }
     }
+  }
 
   /// ----------------------
   /// UI
@@ -327,22 +325,30 @@ class _ActivityChatState extends State<ActivityChat> {
                 ),
                 backgroundColor: _joined ? Colors.green : Colors.black,
               ),
-              child: _loadingJoin
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  )
-                : Text(
-                    _joined ? "Joined" : "Join",
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
+              child: 
+                Text(
+                  _joined ? "Joined" : "Join",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
                   ),
+                ),
+              // child: _loadingJoin
+              //   ? const SizedBox(
+              //       width: 16,
+              //       height: 16,
+              //       child: CircularProgressIndicator(
+              //         color: Colors.white,
+              //         strokeWidth: 2,
+              //       ),
+              //     )
+              //   : Text(
+              //       _joined ? "Joined" : "Join",
+              //       style: const TextStyle(
+              //         fontWeight: FontWeight.w600,
+              //         color: Colors.white,
+              //       ),
+              //     ),
             )
           ],
         ),
@@ -352,13 +358,10 @@ class _ActivityChatState extends State<ActivityChat> {
 
   @override
   Widget build(BuildContext context) {
-    if (_checkingJoin) {
-      return const Center(child: CircularProgressIndicator());
-    }
     if (!_joined) {
       return _buildJoinGate();
     }
-    if (_loading) {
+    if (_loading || _loadingJoin) {
       return const Center(child: CircularProgressIndicator());
     }
 

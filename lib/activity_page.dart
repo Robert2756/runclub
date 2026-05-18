@@ -75,7 +75,7 @@ class ActivityPage extends StatefulWidget {
   State<ActivityPage> createState() => _ActivityPageState();
 }
 
-class _ActivityPageState extends State<ActivityPage> {
+class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderStateMixin{
   Post? post;
   List<String> participants = [];
   bool isJoined = false;
@@ -99,6 +99,16 @@ class _ActivityPageState extends State<ActivityPage> {
   static ActivityMode _lastMode = ActivityMode.details;
   final DraggableScrollableController _sheetController =
     DraggableScrollableController();
+  
+  late final AnimationController _modeController;
+  late final Animation<double> _chatOpacity;
+  late final Animation<Offset> _chatSlide;
+  bool get _isChat => _mode == ActivityMode.chat;
+  int get count => participants.length;
+  int? unreadCounter;
+  Key _chatKey = UniqueKey(); // if key changes -> build ActivityChat new (as it is passed as key)
+  Key _detailsKey = UniqueKey();
+  bool get _isChatActive => _mode == ActivityMode.chat;
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/backdrop/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
@@ -189,6 +199,7 @@ class _ActivityPageState extends State<ActivityPage> {
       .single();
 
     // ✅ ONE setState → no flicker
+    debugPrint("Fetching worked");
     setState(() {
       post = loadedPost;
       participants = userIds;
@@ -199,6 +210,36 @@ class _ActivityPageState extends State<ActivityPage> {
       ];
       _avatarUrl = responseProfile['avatar_url'] as String?;
       _profileName = responseProfile['username'] as String?;
+    });
+
+    // count unread messages from user for this activity
+    await _calculateUnread();
+  }
+
+  Future<void> _calculateUnread() async {
+    final userId = supabase.auth.currentUser!.id;
+
+    final res = await supabase
+        .from('activity_participants')
+        .select('last_read_at')
+        .eq('post_id', post!.id)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    final lastReadAt = res?['last_read_at'];
+
+    final count = await supabase
+        .from('activity_messages')
+        .select('message_id')
+        .eq('activity_id', post!.id)
+        .neq('user_id', userId)
+        .gt('created_at', lastReadAt ?? '1970-01-01')
+        .count();
+
+    setState(() {
+      debugPrint("last read: $lastReadAt");
+      debugPrint("Counter: ${count.count}");
+      unreadCounter = count.count;
     });
   }
 
@@ -248,43 +289,84 @@ class _ActivityPageState extends State<ActivityPage> {
   }
 
   Future<void> toggleJoin() async {
-    if (_loadingJoin) return; // prevent multiple taps
+    if (_loadingJoin) return;
     setState(() => _loadingJoin = true);
 
     try {
+      final userId = supabase.auth.currentUser!.id;
+
       if (!_joined) {
-        // join activity
+        // JOIN
         await supabase.from('activity_participants').insert({
           'post_id': post!.id,
-          'user_id': supabase.auth.currentUser!.id,
+          'user_id': userId,
+          'last_read_at': null,
         });
+
+        await _calculateUnread();
+
+        setState(() {
+          _joined = true;
+          participants.add(userId); // 👈 update UI instantly
+          _chatKey = UniqueKey();
+        });
+
       } else {
-        // optionally leave activity
-        await supabase.from('activity_participants')
+        // LEAVE
+        await supabase
+            .from('activity_participants')
             .delete()
             .eq('post_id', post!.id)
-            .eq('user_id', supabase.auth.currentUser!.id);
+            .eq('user_id', userId);
+        
+        await _calculateUnread();
+
+        setState(() {
+          _joined = false;
+          participants.remove(userId); // 👈 update UI instantly
+          _chatKey = UniqueKey();
+        });
       }
 
-      // toggle joined state -> update button UI immediately
-      setState(() => _joined = !_joined);
-
-      // imediately refresh participant avatars after joining/leaving
-      await fetchParticipantAvatars();
+      // optional background refresh (avatars etc.)
+      fetchParticipantAvatars();
 
     } catch (e) {
       debugPrint('Error toggling join: $e');
-      // optionally show a SnackBar or toast
     } finally {
       setState(() => _loadingJoin = false);
     }
   }
 
   @override
+  void dispose() {
+    _modeController.dispose();
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
     loadActivity();
-    _mode = _lastMode;
+    _mode = ActivityMode.details;
+
+    _modeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+
+    _chatOpacity = CurvedAnimation(
+      parent: _modeController,
+      curve: Curves.easeOut,
+    );
+
+    _chatSlide = Tween<Offset>(
+      begin: const Offset(0, 0.05),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _modeController, curve: Curves.easeOut),
+    );
+
   }
 
   Widget _buildLocationHeader() {
@@ -356,99 +438,41 @@ class _ActivityPageState extends State<ActivityPage> {
           userAgentPackageName: 'com.robert.app',
         ),
         if (showMarker && post!.latitude != null && post!.longitude != null)
-          if (!_canSeeExactLocation)
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: location,
-                  width: 100,
-                  height: 100,
-                  child: _blurredLocationField(),
-                ),
-              ],
-            )
-          else
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: location,
-                  width: 40,
-                  height: 40,
-                  child: const Icon(
-                    Icons.location_on,
-                    color: Colors.red,
-                    size: 30,
+          MarkerLayer(
+            markers: [
+              Marker(
+                point: location,
+                width: 44,
+                height: 44,
+                alignment: Alignment.topCenter,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.18),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      post!.activity == "Bike"
+                          ? Icons.directions_bike
+                          : Icons.directions_run,
+                      color: Colors.black,
+                      size: 18,
+                    ),
                   ),
                 ),
-              ],
-            )
+              ),
+            ],
+          )
       ],
     );
   }
-
-  // Widget _buildHero() {
-  //   final size = MediaQuery.of(context).size;
-  //   final heroHeight = size.height * 0.45;
-
-  //   final extent = _sheetController.isAttached
-  //       ? _sheetController.size
-  //       : 0.60;
-
-  //   final t = ((extent - 0.60) / (0.88 - 0.60)).clamp(0.0, 1.0);
-
-  //   final map = _buildMap(initialZoom: 13, showMarker: true);
-  //   final image = post!.imgurl != null
-  //       ? Image.network(post!.imgurl!, fit: BoxFit.cover)
-  //       : map;
-
-  //   return SizedBox(
-  //     height: heroHeight,
-  //     width: double.infinity,
-  //     child: Stack(
-  //       children: [
-  //         // =========================
-  //         // MAIN LAYER (swaps roles)
-  //         // =========================
-  //         AnimatedPositioned(
-  //           duration: const Duration(milliseconds: 350),
-  //           curve: Curves.easeOutCubic,
-  //           top: _mapPrimary ? 0 : 0,
-  //           left: _mapPrimary ? 0 : 0,
-  //           right: _mapPrimary ? 0 : 0,
-  //           bottom: _mapPrimary ? 0 : 0,
-  //           child: ClipRRect(
-  //             borderRadius: BorderRadius.circular(_mapPrimary ? 0 : 0),
-  //             // child: GestureDetector(
-  //             //   onTap: () {
-  //             //     setState(() {
-  //             //       _mapPrimary = !_mapPrimary;
-  //             //     });
-  //             //   },
-  //             //   child: _mapPrimary ? map : image,
-  //             // ),
-  //             child: _mapPrimary ? map : image,
-  //           ),
-  //         ),
-
-  //         // =========================
-  //         // gradient overlay always on top
-  //         // =========================
-  //         Container(
-  //           decoration: BoxDecoration(
-  //             gradient: LinearGradient(
-  //               begin: Alignment.bottomCenter,
-  //               end: Alignment.topCenter,
-  //               colors: [
-  //                 Colors.black.withOpacity(0.55),
-  //                 Colors.transparent,
-  //               ],
-  //             ),
-  //           ),
-  //         ),
-  //       ],
-  //     ),
-  //   );
-  // }
 
   Widget _buildHero() {
     final size = MediaQuery.of(context).size;
@@ -485,25 +509,6 @@ class _ActivityPageState extends State<ActivityPage> {
       ),
     );
   }
-
-  // Widget _buildDetails(ScrollController controller) {
-  //   return ListView(
-  //     controller: controller,
-  //     physics: _mode == ActivityMode.chat
-  //       ? const NeverScrollableScrollPhysics()
-  //       : const ClampingScrollPhysics(),
-  //     padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-  //     children: [
-  //       _buildHeader(),
-  //       _buildQuickStats(),
-  //       const SizedBox(height: 22),
-  //       _buildParticipants(),
-  //       const SizedBox(height: 16),
-  //       _buildDescription(),
-  //       const SizedBox(height: 40),
-  //     ],
-  //   );
-  // }
 
   Future<void> openInMaps(double lat, double lng) async {
     final url = Uri.parse(
@@ -571,225 +576,69 @@ class _ActivityPageState extends State<ActivityPage> {
     );
   }
 
-  // Widget _buildLocationCard() {
-  //   return Column(
-  //     crossAxisAlignment: CrossAxisAlignment.start,
-  //     children: [
-  //       const Text(
-  //         "Ort",
-  //         style: TextStyle(
-  //           fontSize: 16,
-  //           fontWeight: FontWeight.w700,
-  //         ),
-  //       ),
-
-  //       const SizedBox(height: 10),
-
-  //       Row(
-  //         children: [
-  //           // PRIMARY
-  //           Text(
-  //             post!.town ?? "Standort",
-  //             style: const TextStyle(
-  //               fontSize: 15,
-  //               fontWeight: FontWeight.w600,
-  //               letterSpacing: -0.2,
-  //             ),
-  //           ),
-
-  //           const SizedBox(width: 8),
-
-  //           // SEPARATOR (modern trick)
-  //           Container(
-  //             width: 4,
-  //             height: 4,
-  //             decoration: BoxDecoration(
-  //               color: Colors.grey.shade400,
-  //               shape: BoxShape.circle,
-  //             ),
-  //           ),
-
-  //           const SizedBox(width: 8),
-
-  //           // SECONDARY
-  //           Text(
-  //             "${post!.userdistance} m entfernt",
-  //             style: TextStyle(
-  //               fontSize: 13,
-  //               fontWeight: FontWeight.w500,
-  //               color: Colors.grey.shade600,
-  //             ),
-  //           ),
-  //         ],
-  //       ),
-  //       // 👇 THIS is the safe layout boundary
-  //       AspectRatio(
-  //         aspectRatio: 1,
-  //         child: GestureDetector(
-  //           onTap: () {
-  //             openInMaps(post!.latitude!, post!.longitude!);
-  //           },
-
-  //           child: Container(
-  //             decoration: BoxDecoration(
-  //               borderRadius: BorderRadius.circular(26),
-  //             ),
-
-  //             child: ClipRRect(
-  //               borderRadius: BorderRadius.circular(26),
-
-  //               // 👇 IMPORTANT: no inner Stack inside Stack duplication
-  //               child: Stack(
-  //                 fit: StackFit.expand,
-  //                 children: [
-
-  //                   // MAP
-  //                   _buildMap(initialZoom: 14, showMarker: true),
-
-  //                   // GRADIENT OVERLAY
-  //                   IgnorePointer(
-  //                     child: Container(
-  //                       decoration: BoxDecoration(
-  //                         gradient: LinearGradient(
-  //                           begin: Alignment.bottomCenter,
-  //                           end: Alignment.center,
-  //                           colors: [
-  //                             Colors.black.withOpacity(0.35),
-  //                             Colors.transparent,
-  //                           ],
-  //                         ),
-  //                       ),
-  //                     ),
-  //                   ),
-  //                 ],
-  //               ),
-  //             ),
-  //           ),
-  //         ),
-  //       ),
-  //     ],
-  //   );
-  // }
-
   Widget _buildLocationCard() {
     final locked = !_canSeeExactLocation;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 30,
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 20,
             offset: const Offset(0, 10),
           ),
         ],
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
 
-          // MAP SECTION
-          SizedBox(
-            height: 210,
-            child: Stack(
+          // =========================
+          // HEADER (same system as others)
+          // =========================
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+            child: Row(
               children: [
-
-                // MAP
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(28),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: _buildMap(
-                    initialZoom: locked ? 11 : 14,
-                    showMarker: true,
-                  ),
-                ),
-
-                // DARK OVERLAY
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.55),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
+                  child: const Icon(
+                    Icons.place_outlined,
+                    color: Colors.black,
+                    size: 10,
                   ),
                 ),
+                const SizedBox(width: 12),
 
-                // FLOATING BADGE
-                Positioned(
-                  top: 14,
-                  right: 14,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.55),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          locked
-                              ? Icons.lock_outline
-                              : Icons.location_on,
-                          size: 15,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          locked
-                              ? "Approximate"
-                              : "Exact location",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // BOTTOM LOCATION INFO
-                Positioned(
-                  left: 18,
-                  right: 18,
-                  bottom: 18,
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-
-                      Text(
-                        post!.town ?? "Location",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
+                      const Text(
+                        "Treffpunkt",
+                        style: TextStyle(
+                          fontSize: 18,
                           fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5,
+                          letterSpacing: -0.4,
                         ),
                       ),
-
-                      const SizedBox(height: 4),
-
+                      const SizedBox(height: 2),
                       Text(
                         locked
-                            ? "Join to unlock meetup point"
-                            : "${post!.userdistance} m away",
+                            ? "Wird nach Beitritt freigeschaltet"
+                            : "Exakter Standort sichtbar",
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 14,
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -800,41 +649,125 @@ class _ActivityPageState extends State<ActivityPage> {
             ),
           ),
 
-          // ACTIONS
-          Padding(
-            padding: const EdgeInsets.all(18),
-            child: Row(
+          // =========================
+          // MAP
+          // =========================
+          SizedBox(
+            height: 220,
+            child: Stack(
               children: [
 
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: locked
-                        ? null
-                        : () => openInMaps(
-                              post!.latitude!,
-                              post!.longitude!,
-                            ),
-                    icon: const Icon(Icons.navigation_outlined),
-                    label: const Text("Open in Maps"),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(52),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(12),
+                  ),
+                  child: _buildMap(
+                    initialZoom: locked ? 11 : 14,
+                    showMarker: true,
+                  ),
+                ),
+
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.45),
+                          Colors.transparent,
+                        ],
                       ),
                     ),
                   ),
                 ),
 
-                const SizedBox(width: 12),
-
-                Container(
-                  height: 52,
-                  width: 52,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(18),
+                // TOP RIGHT BUTTON
+                Positioned(
+                  top: 14,
+                  right: 14,
+                  child: GestureDetector(
+                    onTap: locked
+                        ? null
+                        : () => openInMaps(
+                              post!.latitude!,
+                              post!.longitude!,
+                            ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: locked
+                            ? Colors.black.withOpacity(0.25)
+                            : Colors.white.withOpacity(0.95),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.navigation_outlined,
+                            size: 16,
+                            color: locked ? Colors.white : Colors.black,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            "Maps",
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: locked ? Colors.white : Colors.black,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  child: const Icon(Icons.share_location_outlined),
+                ),
+
+                // BOTTOM TEXT
+                Positioned(
+                  left: 18,
+                  right: 18,
+                  bottom: 16,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        post!.town ?? "Location",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        locked
+                          ? "Join to unlock meetup point"
+                          : (post!.userdistance != null
+                            ? (post!.userdistance! >= 1000
+                                ? "${(post!.userdistance! / 1000).round()}\u00A0km entfernt"
+                                : "${post!.userdistance!.round()}\u00A0m entfernt")
+                            : "none"),
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -850,7 +783,7 @@ class _ActivityPageState extends State<ActivityPage> {
     String? subtitle,
   }) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 0, 0, 12),
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -877,7 +810,7 @@ class _ActivityPageState extends State<ActivityPage> {
           ),
 
           if (subtitle != null) ...[
-            const SizedBox(height: 4),
+            // const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.only(left: 26),
               child: Text(
@@ -907,26 +840,32 @@ class _ActivityPageState extends State<ActivityPage> {
             16,
             16,
             16,
-            80 + MediaQuery.of(context).padding.bottom,
+            75 + MediaQuery.of(context).padding.bottom,
           ),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
               _buildHeader(),
               _buildDescription(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               _buildQuickStats(),
-              const SizedBox(height:16),
-              _buildParticipants(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+              // _sectionHeader(
+              //   icon: Icons.people,
+              //   title: "Wer dabei ist",
+              // ),
+              // const SizedBox(height: 12),
+              _buildParticipantsCard(),
+              const SizedBox(height: 14),
               // 👉 INSERT MAP HERE
-              _sectionHeader(
-                icon: Icons.place_outlined,
-                title: "Treffpunkt",
-                subtitle: _joined
-                    ? "Exakter Treffpunkt sichtbar"
-                    : "Wird nach Beitritt freigeschaltet",
-              ),
+              // _sectionHeader(
+              //   icon: Icons.place_outlined,
+              //   title: "Treffpunkt",
+              //   subtitle: _joined
+              //       ? null
+              //       : "Wird nach Beitritt freigeschaltet",
+              // ),
               if (post!.latitude != null && post!.longitude != null)
+                // const SizedBox(height: 12),
                 _buildLocationCard()
             ]),
           ),
@@ -935,33 +874,130 @@ class _ActivityPageState extends State<ActivityPage> {
     );
   }
 
-  Widget _tab(String label, ActivityMode target) {
+  Future<void> markChatAsRead() async {
+    final userId = supabase.auth.currentUser!.id;
+    print("Now: ${DateTime.now().toIso8601String()}");
+
+    await supabase
+        .from('activity_participants')
+        .update({
+          'last_read_at': DateTime.now().toIso8601String(),
+        })
+        .eq('post_id', post!.id)
+        .eq('user_id', userId);
+    
+    setState(()
+    {
+      unreadCounter = 0;
+    });
+  }
+
+  Widget _tab(
+    String label,
+    ActivityMode target) {
     final active = _mode == target;
+
+    debugPrint("UnreadMessages: $unreadCounter");
+
     return GestureDetector(
-      // onTap: () => setState(() => _mode = target),
-      onTap: () {
+      onTap: () async {
+
+        final wasChat = _mode == ActivityMode.chat;
+        final goingToChat = target == ActivityMode.chat;
+
         setState(() {
           _mode = target;
           _lastMode = target;
         });
+
+        if (goingToChat && !wasChat) {
+          _modeController.forward();
+          if (_joined) await markChatAsRead();
+        } else {
+          _modeController.reverse();
+        }
+
         _sheetController.animateTo(
           target == ActivityMode.chat ? 0.88 : 0.60,
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOutCubic,
         );
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? Colors.black : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: active ? Colors.white : Colors.black,
-            fontWeight: FontWeight.w600,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // ======================
+          // TAB BODY
+          // ======================
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 8,
+            ),
+            decoration: BoxDecoration(
+              color: active ? Colors.black : Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: active ? Colors.white : Colors.black,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
+
+          // ======================
+          // FLOATING BADGE
+          // ======================
+          if ((unreadCounter ?? 0) > 0 && !active)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: Container(
+                constraints: const BoxConstraints(
+                  minWidth: 18,
+                  minHeight: 18,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF3B30),
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    (unreadCounter ?? 0) > 9 ? "9+" : "$unreadCounter",
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sheetHandle() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.only(top: 10, bottom: 10),
+        width: 40,
+        height: 4,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(10),
         ),
       ),
     );
@@ -982,7 +1018,6 @@ class _ActivityPageState extends State<ActivityPage> {
 
   Widget _buildContent(ScrollController controller) {
     return Container(
-      // padding: const EdgeInsets.only(bottom: 80),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(
@@ -992,53 +1027,57 @@ class _ActivityPageState extends State<ActivityPage> {
       ),
       child: Column(
         children: [
-          // 🧭 drag handle
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 10),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
+          _sheetHandle(),
           _modeSwitch(),
-
-          // // 🔀 MODE SWITCH (NEW)
-          // _modeSwitch(),
-          // GestureDetector(
-          //   behavior: HitTestBehavior.translucent,
-          //   onVerticalDragUpdate: _handleDragUpdate,
-          //   onVerticalDragEnd: _handleDragEnd,
-          //   child: Column(
-          //     children: [
-          //       Center(
-          //         child: Container(
-          //           margin: const EdgeInsets.only(top: 10, bottom: 10),
-          //           width: 40,
-          //           height: 4,
-          //           decoration: BoxDecoration(
-          //             color: Colors.grey.shade300,
-          //             borderRadius: BorderRadius.circular(10),
-          //           ),
-          //         ),
-          //       ),
-          //       _modeSwitch(),
-          //     ],
-          //   ),
-          // ),
-
           const SizedBox(height: 8),
 
-          // 📦 DYNAMIC CONTENT AREA
           Expanded(
-            child: _mode == ActivityMode.details
-                ? _buildDetails(controller)
-                : ActivityChat(
-                    activityId: post!.id,
+            child: Stack(
+              children: [
+                // -----------------------
+                // DETAILS LAYER
+                // -----------------------
+                IgnorePointer(
+                  ignoring: _isChat,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: _isChat ? 0 : 1,
+                    child: Transform.translate(
+                      offset: Offset(0, _isChat ? -10 : 0),
+                      child: _buildDetails(controller),
+                    ),
                   ),
+                ),
+
+                // -----------------------
+                // CHAT LAYER
+                // -----------------------
+                IgnorePointer(
+                  ignoring: !_isChat,
+                  child: SlideTransition(
+                    position: _chatSlide,
+                    child: FadeTransition(
+                      opacity: _chatOpacity,
+                      child: ActivityChat(
+                        key: _chatKey, 
+                        activityId: post!.id,
+                        initialJoined: _joined,
+                        onJoinChanged: (v) async {
+                          setState(() => _joined = v);
+                          await fetchParticipantAvatars();
+                          setState(() {
+                            _chatKey = UniqueKey();
+                          });
+                        },
+                        isActive: _isChatActive,
+                        onActiveRead: markChatAsRead,
+                        markUnread: markChatAsRead,
+                      )
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1138,74 +1177,98 @@ class _ActivityPageState extends State<ActivityPage> {
             child: Align(
               alignment: Alignment.bottomCenter,
               child: Container(
-                width: double.infinity,
-
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  4,
-                  20,
-                  MediaQuery.of(context).padding.bottom, // 👈 KEY FIX
-                ),
-
-                // 👇 white bottom background
+                //  white bottom background
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.97),
+                  color: Colors.transparent, // const Color(0xFFF6F7F9),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 24,
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 20,
                       offset: const Offset(0, -6),
                     ),
                   ],
                 ),
-
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    20,
-                    14,
-                    20,
-                    18,
-                  ),
-
-                  child: SizedBox(
-                    height: 56,
-
-                    child: ElevatedButton(
-                      onPressed:
-                          _loadingJoin ? null : toggleJoin,
-
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            _joined ? Colors.green : Colors.black,
-
-                        elevation: 0,
-
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  6,
+                  20,
+                  12 + MediaQuery.of(context).padding.bottom, // 👈 KEY FIX
+                ),
+                width: double.infinity,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Align(
+                      alignment: Alignment.center,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: 280,
                         ),
-                      ),
-
-                      child: _loadingJoin
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
+                        child: 
+                          SizedBox(
+                            height: 52,
+                            width: double.infinity,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(22),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: _joined
+                                      ? [
+                                          const Color(0xFF22C55E), // deeper green
+                                          const Color(0xFF34D399), // soft green
+                                          // const Color.fromARGB(255, 220, 195, 255),
+                                          // const Color.fromARGB(255, 163, 130, 210),
+                                        ]
+                                      : [
+                                          const Color.fromARGB(255, 220, 195, 255),
+                                          const Color.fromARGB(255, 163, 130, 210),
+                                        ],
+                                ),
                               ),
-                            )
-                          : Text(
-                              _joined
-                                  ? "Joined"
-                                  : "Join ${post?.activity?.toLowerCase() ?? ""}",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 16,
-                                color: Colors.white,
+
+                              child: SizedBox(
+                                height: 44,
+
+                                child: ElevatedButton(
+                                  onPressed: _loadingJoin ? null : toggleJoin,
+
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent, // 👈 important
+                                    shadowColor: Colors.transparent,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(22),
+                                    ),
+                                  ),
+
+                                  child: _loadingJoin
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : Text(
+                                          _joined
+                                              ? "Joined"
+                                              : "Join ${post?.activity?.toLowerCase() ?? ""}",
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                ),
                               ),
                             ),
-                    ),
-                  ),
+                          ),
+                      )
+                    )
+                  ]
                 ),
               ),
             ),
@@ -1215,87 +1278,110 @@ class _ActivityPageState extends State<ActivityPage> {
     );
   }
 
+  String formatPostAge(dynamic createdAt) {
+    if (createdAt == null) return "";
+
+    DateTime created;
+    if (createdAt is DateTime) {
+      created = createdAt.toLocal();
+    } else {
+      created = DateTime.parse(createdAt.toString()).toLocal();
+    }
+    final diff = DateTime.now().difference(created);
+
+    if (diff.inMinutes < 60) {
+      final m = diff.inMinutes == 0 ? 1 : diff.inMinutes;
+      return "Vor $m Minute${m > 1 ? "n" : ""}";
+    }
+    if (diff.inHours < 24) {
+      final h = diff.inHours;
+      return "Vor $h Stunde${h > 1 ? "n" : ""}";
+    }
+
+    final d = diff.inDays;
+    return "Vor $d Tag${d > 1 ? "en" : ""}";
+  }
+
   Widget _buildHeader() {
     final theme = Theme.of(context);
+
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top row: profile iamge + title
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ProfilePage(
-                      profileId: post!.creatorId,
-                    ),
+
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ProfilePage(
+                    profileId: post!.creatorId,
                   ),
-                );
-              },
-              child: CircleAvatar(
-                radius: 20,
-                backgroundImage: _avatarUrl != null
-                    ? NetworkImage(_avatarUrl!)
-                    : const NetworkImage(
-                        "https://media.istockphoto.com/id/2221502929/de/vektor/flache-abbildung-in-graustufen-avatar-benutzerprofil-personensymbol-geschlechtsneutrale.jpg",
-                      ),
-              ),
-            ),
-              const SizedBox(width: 8),
-              Text(
-                _profileName ?? "Username",
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
                 ),
-              ),
-              const Spacer(),
-              if ({
-                "Run": Icons.directions_run,
-                "Bike": Icons.directions_bike,
-              }.containsKey(post!.activity))
-                _activityIcon({
+              );
+            },
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+
+                CircleAvatar(
+                  radius: 20,
+                  backgroundImage: _avatarUrl != null
+                      ? NetworkImage(_avatarUrl!)
+                      : const NetworkImage(
+                          "https://media.istockphoto.com/id/2221502929/de/vektor/flache-abbildung-in-graustufen-avatar-benutzerprofil-personensymbol-geschlechtsneutrale.jpg",
+                        ),
+                ),
+
+                const SizedBox(width: 8),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _profileName ?? "Username",
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                      formatPostAge(post!.createdAt),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[700],
+                          fontWeight: FontWeight.w500,
+                        )
+                      ),
+                    ]
+                  ),
+                ),
+
+                if ({
                   "Run": Icons.directions_run,
                   "Bike": Icons.directions_bike,
-                }[post!.activity]!),
-            ]
+                }.containsKey(post!.activity))
+                  _activityIcon({
+                    "Run": Icons.directions_run,
+                    "Bike": Icons.directions_bike,
+                  }[post!.activity]!),
+              ],
+            ),
           ),
-          const SizedBox(height: 10),
+
+          const SizedBox(height: 20),
+
           Text(
             post!.title,
             style: Theme.of(context).textTheme.titleLarge,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  (post!.town != null ? "${post!.town}" : "none") +
-                  (post!.userdistance != null
-                      ? (post!.userdistance! >= 1000
-                          ? "$bullet${(post!.userdistance! / 1000).round()}\u00A0km"
-                          : "$bullet${post!.userdistance!.round()}\u00A0m")
-                      : "$bullet none"),
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.grey[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                )
-              )
-            ],
-          ),
-        ]
-      )
+        ],
+      ),
     );
   }
 
@@ -1318,32 +1404,56 @@ class _ActivityPageState extends State<ActivityPage> {
     final config = activityConfigs[post!.activity];
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(20),
-      ),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(26),
+
+          border: Border.all(
+            color: Colors.grey.shade200,
+          ),
+
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
       child: Column(
         children: [
+          // HEADER
           Row(
             children: [
-              Expanded(
-                child: _stat(
-                  "Distanz",
-                  post!.distance != null
-                      ? dataFormatter.formatDistance(post!.distance!)
-                      : "-",
+
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.insights_outlined,
+                  color: Colors.black,
+                  size: 10,
                 ),
               ),
-              Expanded(
-                child: _stat(
-                  config?.statLabel ?? "-",
-                  config?.statValue(post!) ?? "-",
+
+              const SizedBox(width: 12),
+
+              const Text(
+                "Aktivitätsdetails",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.4,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
+          const SizedBox(height: 14),
+                    Row(
             children: [
               Expanded(
                 child: _stat(
@@ -1362,6 +1472,25 @@ class _ActivityPageState extends State<ActivityPage> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _stat(
+                  "Distanz",
+                  post!.distance != null
+                      ? dataFormatter.formatDistance(post!.distance!)
+                      : "-",
+                ),
+              ),
+              Expanded(
+                child: _stat(
+                  config?.statLabel ?? "-",
+                  config?.statValue(post!) ?? "-",
+                ),
+              ),
+            ]
           ),
         ],
       ),
@@ -1396,18 +1525,18 @@ class _ActivityPageState extends State<ActivityPage> {
           label.toUpperCase(),
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontSize: 11,
+            fontSize: 9,
             letterSpacing: 0.8,
             color: Colors.grey[500],
             fontWeight: FontWeight.w500,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           value,
           textAlign: TextAlign.center,
           style: const TextStyle(
-            fontSize: 16,
+            fontSize: 17,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -1415,71 +1544,164 @@ class _ActivityPageState extends State<ActivityPage> {
     );
   }
 
-  Widget _buildParticipants() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "Going",
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-        ),
-        Row(
-          children: [
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ParticipantsPage(postId: post!.id),
-                  ),
-                );
-              },
-              child: Row(
-                children: [
-                  buildParticipantStack(participantAvatars),
-                  const SizedBox(width: 10),
-                  Text(
-                    "${participants.length} joined",
-                    style: TextStyle(color: Colors.grey[700]),
-                  ),
-                ]
-              ),
+  Widget _buildParticipantsCard() {
+    final hasParticipants = participantAvatars.isNotEmpty;
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ParticipantsPage(postId: post!.id),
+          ),
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: Colors.grey.shade200),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
             ),
-            const Spacer(),
-            TextButton(
-              onPressed: () {
-                // navigate to full list
-              },
-              child: ElevatedButton(
-                onPressed: _loadingJoin ? null : toggleJoin, // disable button while loading
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  backgroundColor: _joined ? Colors.green : Colors.black,
-                ),
-                child: _loadingJoin
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : Text(
-                        _joined ? "Joined" : "Join",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-              )
-            )
           ],
         ),
-      ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+
+            // =========================
+            // HEADER
+            // =========================
+            Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: const Icon(
+                    Icons.people,
+                    color: Colors.black,
+                    size: 16,
+                  ),
+                ),
+
+                const SizedBox(width: 10),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Wer dabei ist",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        count == 0
+                            ? "Noch niemand dabei"
+                            : "$count ${count == 1 ? "Person" : "Personen"}",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Icon(
+                  Icons.chevron_right,
+                  color: Colors.grey.shade400,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            // =========================
+            // AVATARS (more compact + higher integration)
+            // =========================
+            if (hasParticipants)
+              SizedBox(
+                height: 36,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    for (int i = 0; i < participantAvatars.take(6).length; i++)
+                      Positioned(
+                        left: i * 20,
+                        child: CircleAvatar(
+                          radius: 17,
+                          backgroundImage:
+                              NetworkImage(participantAvatars[i]),
+                        ),
+                      ),
+
+                    // +X bubble
+                    if (count > 6)
+                      Positioned(
+                        left: 6 * 22,
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: const BoxDecoration(
+                            color: Colors.black,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              "+${count - 6}",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.people_outline,
+                      color: Colors.grey.shade400,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      "Noch keine Teilnehmer — sei der Erste",
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 

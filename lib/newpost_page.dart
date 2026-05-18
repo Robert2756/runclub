@@ -1773,6 +1773,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
 
               setState(() => isLoading = true);
               bool success = await addPostToDatabase();
+              // add creator automatically to activity participants!!
               setState(() => isLoading = false);
 
               if (!mounted) return;
