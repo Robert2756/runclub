@@ -766,11 +766,12 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
 
   Future<void> _sendInvite(Post run) async {
     try {
-      await supabase.from('invites').insert({
+      await supabase.from('notifications').insert({
         'from_user': supabase.auth.currentUser!.id,
         'to_user': widget.profileId,
         'post_id': run.id,
         'created_at': DateTime.now().toIso8601String(),
+        'type': 'invite'
       });
 
       Navigator.pop(context);

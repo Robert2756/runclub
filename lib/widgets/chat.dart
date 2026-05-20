@@ -60,19 +60,25 @@ class Message {
 class ActivityChat extends StatefulWidget {
   final String activityId;
   final bool initialJoined;
+  final bool initialRequested;
   final ValueChanged<bool>? onJoinChanged;
+  final ValueChanged<bool>? onRequestedChanged;
   final VoidCallback? onActiveRead;
   final bool isActive;
   final VoidCallback markUnread;
+  final String? joinMode;
 
   const ActivityChat({
     super.key,
     required this.activityId,
     required this.initialJoined,
+    required this.initialRequested,
     this.onJoinChanged,
+    this.onRequestedChanged,
     this.onActiveRead,
     required this.isActive,
     required this.markUnread,
+    required this.joinMode,
   });
 
   @override
@@ -84,6 +90,7 @@ class _ActivityChatState extends State<ActivityChat> {
   final TextEditingController _inputController = TextEditingController();
 
   late bool _joined;
+  late bool _requested;
   RealtimeChannel? _channel;
 
   bool _loading = false;
@@ -97,6 +104,7 @@ class _ActivityChatState extends State<ActivityChat> {
   void initState() {
     super.initState();
     _joined = widget.initialJoined;
+    _requested = widget.initialRequested;
     _bootstrap();
   }
 
@@ -108,7 +116,7 @@ class _ActivityChatState extends State<ActivityChat> {
   }
 
   Future<void> _bootstrap() async {
-    if (!_joined) return;
+    if (!_joined || _requested) return;
     await _initChat();
   }
 
@@ -122,7 +130,7 @@ class _ActivityChatState extends State<ActivityChat> {
   /// ----------------------
 
   Future<void> _fetchInitialMessages() async {
-    if (!_joined) return;
+    if (!_joined || _requested) return;
 
     final res = await supabase
         .from('activity_messages')
@@ -196,7 +204,7 @@ class _ActivityChatState extends State<ActivityChat> {
   /// ----------------------
 
   void _subscribeRealtime() {
-    if (!_joined) return;
+    if (!_joined || _requested) return;
     _channel = supabase.channel('activity-${widget.activityId}');
 
     _channel?.onPostgresChanges(
@@ -226,7 +234,7 @@ class _ActivityChatState extends State<ActivityChat> {
   /// ----------------------
 
   Future<void> _sendMessage() async {
-    if (!_joined) return;
+    if (!_joined || _requested) return;
     final text = _inputController.text.trim();
     if (text.isEmpty) return;
 
@@ -263,26 +271,50 @@ class _ActivityChatState extends State<ActivityChat> {
 
     final userId = supabase.auth.currentUser!.id;
 
-    try {
-      await supabase.from('activity_participants').insert({
-        'post_id': widget.activityId,
-        'user_id': userId,
-        'last_read_at': null,
-      });
+    if (widget.joinMode == "Instant") {
+      try {
+        await supabase.from('activity_participants').insert({
+          'post_id': widget.activityId,
+          'user_id': userId,
+          'last_read_at': null,
+          'status': "joined" ,
+        });
 
-      setState(() {
-        _joined = true;
-        widget.onJoinChanged?.call(true);
-      });
+        setState(() {
+          _joined = true;
+          widget.onJoinChanged?.call(true);
+        });
 
-      await _bootstrap();
-      widget.markUnread();
+        await _bootstrap();
+        widget.markUnread();
 
-    } catch (e) {
-      debugPrint("Join failed: $e");
-    } finally {
-      if (mounted) {
-        setState(() => _loadingJoin = false);
+      } catch (e) {
+        debugPrint("Join failed: $e");
+      } finally {
+        if (mounted) {
+          setState(() => _loadingJoin = false);
+        }
+      }
+    } else if (widget.joinMode == "Request") {
+      try {
+        await supabase.from('activity_participants').insert({
+          'post_id': widget.activityId,
+          'user_id': userId,
+          'last_read_at': null,
+          'status': "requested"
+        });
+
+        setState(() {
+          _requested = true;
+          widget.onRequestedChanged?.call(true);
+        });
+
+      } catch (e) {
+        debugPrint("Request failed: $e");
+      } finally {
+        if (mounted) {
+          setState(() => _loadingJoin = false);
+        }
       }
     }
   }
@@ -301,15 +333,22 @@ class _ActivityChatState extends State<ActivityChat> {
             const Icon(Icons.lock_outline, size: 48),
             const SizedBox(height: 12),
 
-            const Text(
-              "Join to access chat",
+
+            Text(
+              (widget.joinMode == "Instant")
+                ? "Beitreten um Chat zu sehen"
+                : (widget.joinMode == "Request")
+                  ? _requested
+                    ? "Auf Anfrage warten um Chat zu sehen"
+                    : "Anfragen um Chat zu sehen"
+                  :"",
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
             ),
 
             const SizedBox(height: 8),
 
             Text(
-              "Only participants can see and send messages in this activity.",
+              "Nur Mitglieder können in dieser Aktivität Nachrichten senden und lesen.",
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey[600]),
             ),
@@ -317,7 +356,7 @@ class _ActivityChatState extends State<ActivityChat> {
             const SizedBox(height: 16),
 
             ElevatedButton(
-              onPressed: _loadingJoin ? null : toggleJoin, // disable button while loading
+              onPressed: (_loadingJoin || _requested) ? null : toggleJoin, // disable button while loading
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 shape: RoundedRectangleBorder(
@@ -327,7 +366,17 @@ class _ActivityChatState extends State<ActivityChat> {
               ),
               child: 
                 Text(
-                  _joined ? "Joined" : "Join",
+                  (widget.joinMode == "Instant")
+                    ? _joined 
+                      ? "Beigetreten"
+                      : "Beitreten"
+                    : (widget.joinMode == "Request")
+                      ? _joined 
+                        ? "Beigetreten"
+                        : _requested
+                          ? "Angefragt"
+                          : "Anfragen"
+                      : "",
                   style: const TextStyle(
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
@@ -358,7 +407,7 @@ class _ActivityChatState extends State<ActivityChat> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_joined) {
+    if (!_joined || _requested) {
       return _buildJoinGate();
     }
     if (_loading || _loadingJoin) {

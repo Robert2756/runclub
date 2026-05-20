@@ -78,9 +78,9 @@ class ActivityPage extends StatefulWidget {
 class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderStateMixin{
   Post? post;
   List<String> participants = [];
-  bool isJoined = false;
   bool loading = false;
   bool _joined = false;
+  bool _requested = false;
   bool _loadingJoin = false;
   bool _mapPrimary = false;
   bool get _canSeeExactLocation => _joined;
@@ -116,20 +116,20 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
 
-  Future<void> checkJoined() async {
-    try {
-      final res = await supabase
-          .from('activity_participants')
-          .select('id')
-          .eq('post_id', post!.id)
-          .eq('user_id', supabase.auth.currentUser!.id)
-          .maybeSingle();
+  // Future<void> checkJoined() async {
+  //   try {
+  //     final res = await supabase
+  //         .from('activity_participants')
+  //         .select('id')
+  //         .eq('post_id', post!.id)
+  //         .eq('user_id', supabase.auth.currentUser!.id)
+  //         .maybeSingle();
 
-      setState(() => _joined = res != null);
-    } catch (e) {
-      debugPrint('Error checking join status: $e');
-    }
-  }
+  //     setState(() => _joined = res != null);
+  //   } catch (e) {
+  //     debugPrint('Error checking join status: $e');
+  //   }
+  // }
 
   Future<void> loadActivity() async {
     final response = await supabase
@@ -154,6 +154,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       longitude: response['longitude']?.toDouble(),
       town: response['town'],
       createdAt: response['created_at'],
+      joinMode: response['join_mode'],
       userdistance: widget.userDistance
     );
 
@@ -166,7 +167,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
       supabase
           .from('activity_participants')
-          .select('id')
+          .select('status')
           .eq('post_id', loadedPost.id)
           .eq('user_id', supabase.auth.currentUser!.id)
           .maybeSingle()
@@ -174,7 +175,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     ]);
 
     final participantsRes = results[0] as List;
-    final joinedRes = results[1];
+    final joinedRes = (results[1] as Map<String, dynamic>?)?["status"] == "joined";
+    final requestedRes = (results[1] as Map<String, dynamic>?)?["status"] == "requested";
 
     final userIds = participantsRes
         .map((e) => e['user_id'].toString())
@@ -203,7 +205,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     setState(() {
       post = loadedPost;
       participants = userIds;
-      _joined = joinedRes != null;
+      _joined = joinedRes;
+      _requested = requestedRes;
       participantAvatars = [
         ...avatarUrls,
         ...debugParticipants,
@@ -217,8 +220,9 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   }
 
   Future<void> _calculateUnread() async {
-    final userId = supabase.auth.currentUser!.id;
+    if (!_joined || _requested) {return;}
 
+    final userId = supabase.auth.currentUser!.id;
     final res = await supabase
         .from('activity_participants')
         .select('last_read_at')
@@ -295,42 +299,58 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     try {
       final userId = supabase.auth.currentUser!.id;
 
-      if (!_joined) {
-        // JOIN
-        await supabase.from('activity_participants').insert({
-          'post_id': post!.id,
-          'user_id': userId,
-          'last_read_at': null,
-        });
-
-        await _calculateUnread();
-
-        setState(() {
-          _joined = true;
-          participants.add(userId); // 👈 update UI instantly
-          _chatKey = UniqueKey();
-        });
-
-      } else {
+      if (!_joined && !_requested) {
+        if (post!.joinMode == "Instant") {
+          // activity join mode "Instant"
+          await supabase.from('activity_participants').insert({
+            'post_id': post!.id,
+            'user_id': userId,
+            'last_read_at': null,
+            'status': "joined"
+          });
+          setState(() {
+            _joined = true;
+            participants.add(userId);
+            _chatKey = UniqueKey();
+          });
+          await _calculateUnread();
+          fetchParticipantAvatars();
+        } else if (post!.joinMode == "Request") {
+          // activity join mode "Request"
+          await supabase.from('activity_participants').insert({
+            'post_id': post!.id,
+            'user_id': userId,
+            'last_read_at': null,
+            'status': "requested"
+          });
+          // notify creator
+          await supabase.from('notifications').insert({
+            'from_user': supabase.auth.currentUser!.id,
+            'to_user': post!.creatorId,
+            'post_id': post!.id,
+            'created_at': DateTime.now().toIso8601String(),
+            'type': 'request'
+          });
+          setState(() {
+            _requested = true;
+          });
+        }
+      } else if (_joined && !_requested){
         // LEAVE
         await supabase
             .from('activity_participants')
             .delete()
             .eq('post_id', post!.id)
             .eq('user_id', userId);
-        
-        await _calculateUnread();
 
         setState(() {
           _joined = false;
-          participants.remove(userId); // 👈 update UI instantly
+          participants.remove(userId);
           _chatKey = UniqueKey();
         });
+        await _calculateUnread();
+        fetchParticipantAvatars();
       }
-
-      // optional background refresh (avatars etc.)
-      fetchParticipantAvatars();
-
     } catch (e) {
       debugPrint('Error toggling join: $e');
     } finally {
@@ -425,6 +445,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
         : LatLng(0.0, 0.0);
 
     return FlutterMap(
+      key: ValueKey(_joined),
       options: MapOptions(
         initialCenter: location,
         initialZoom: initialZoom,
@@ -605,16 +626,17 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
             child: Row(
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: 34,
+                  height: 34,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200)
                   ),
                   child: const Icon(
                     Icons.place_outlined,
                     color: Colors.black,
-                    size: 10,
+                    size: 14,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -849,21 +871,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
               const SizedBox(height: 20),
               _buildQuickStats(),
               const SizedBox(height: 14),
-              // _sectionHeader(
-              //   icon: Icons.people,
-              //   title: "Wer dabei ist",
-              // ),
-              // const SizedBox(height: 12),
               _buildParticipantsCard(),
               const SizedBox(height: 14),
-              // 👉 INSERT MAP HERE
-              // _sectionHeader(
-              //   icon: Icons.place_outlined,
-              //   title: "Treffpunkt",
-              //   subtitle: _joined
-              //       ? null
-              //       : "Wird nach Beitritt freigeschaltet",
-              // ),
               if (post!.latitude != null && post!.longitude != null)
                 // const SizedBox(height: 12),
                 _buildLocationCard()
@@ -950,7 +959,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
           // ======================
           // FLOATING BADGE
           // ======================
-          if ((unreadCounter ?? 0) > 0 && !active)
+          if ((unreadCounter ?? 0) > 0 && !active && _joined)
             Positioned(
               top: -6,
               right: -6,
@@ -1062,6 +1071,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                         key: _chatKey, 
                         activityId: post!.id,
                         initialJoined: _joined,
+                        initialRequested: _requested,
                         onJoinChanged: (v) async {
                           setState(() => _joined = v);
                           await fetchParticipantAvatars();
@@ -1069,9 +1079,13 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                             _chatKey = UniqueKey();
                           });
                         },
+                        onRequestedChanged: (v) async {
+                          setState(() => _requested = v);
+                        },
                         isActive: _isChatActive,
                         onActiveRead: markChatAsRead,
                         markUnread: markChatAsRead,
+                        joinMode: post!.joinMode,
                       )
                     ),
                   ),
@@ -1161,6 +1175,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
   Widget _buildFloatingJoinButton() {
     if (_mode == ActivityMode.chat) return const SizedBox.shrink();
+
     return AnimatedBuilder(
       animation: _sheetController,
       builder: (context, _) {
@@ -1170,105 +1185,91 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
         final t = ((size - 0.70) / 0.18).clamp(0.0, 1.0);
 
-        return IgnorePointer(
-          ignoring: t < 0.05,
-          child: Opacity(
-            opacity: t,
-            child: Align(
-              alignment: Alignment.bottomCenter,
+        return Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: IgnorePointer(
+            ignoring: t < 0.05,
+            child: Opacity(
+              opacity: t,
               child: Container(
-                //  white bottom background
+                width: double.infinity,
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  12,
+                  16,
+                  12 + MediaQuery.of(context).padding.bottom,
+                ),
                 decoration: BoxDecoration(
-                  color: Colors.transparent, // const Color(0xFFF6F7F9),
+                  color: const Color(0xFFFAFAFA),
+
+                  border: Border(
+                    top: BorderSide(
+                      color: Colors.black.withOpacity(0.08),
+                      width: 1,
+                    ),
+                  ),
+
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
-                      blurRadius: 20,
-                      offset: const Offset(0, -6),
+                      color: Colors.black.withOpacity(0.10),
+                      blurRadius: 28,
+                      offset: const Offset(0, -10),
                     ),
                   ],
                 ),
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  6,
-                  20,
-                  12 + MediaQuery.of(context).padding.bottom, // 👈 KEY FIX
-                ),
-                width: double.infinity,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Align(
-                      alignment: Alignment.center,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: 280,
-                        ),
-                        child: 
-                          SizedBox(
-                            height: 52,
-                            width: double.infinity,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(22),
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: _joined
-                                      ? [
-                                          const Color(0xFF22C55E), // deeper green
-                                          const Color(0xFF34D399), // soft green
-                                          // const Color.fromARGB(255, 220, 195, 255),
-                                          // const Color.fromARGB(255, 163, 130, 210),
-                                        ]
-                                      : [
-                                          const Color.fromARGB(255, 220, 195, 255),
-                                          const Color.fromARGB(255, 163, 130, 210),
-                                        ],
-                                ),
-                              ),
-
-                              child: SizedBox(
-                                height: 44,
-
-                                child: ElevatedButton(
-                                  onPressed: _loadingJoin ? null : toggleJoin,
-
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent, // 👈 important
-                                    shadowColor: Colors.transparent,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(22),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: SizedBox(
+                      height: 52,
+                      width: double.infinity,
+                      child: Material(
+                      color: (_loadingJoin || _requested)
+                          ? const Color(0xFFE8F5EE)
+                          : _joined
+                              ? Colors.grey.shade300
+                              : Colors.black,
+                        borderRadius: BorderRadius.circular(26),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(26),
+                          onTap: (_loadingJoin || _requested) ? null : toggleJoin,
+                          child: Center(
+                            child: _loadingJoin
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    (post!.joinMode == "Instant")
+                                      ? _joined 
+                                        ? "Beigetreten"
+                                        : "Beitreten"
+                                      : (post!.joinMode == "Request")
+                                        ? _joined 
+                                          ? "Beigetreten"
+                                          : _requested
+                                            ? "Angefragt"
+                                            : "Anfragen"
+                                        : "",
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: _joined
+                                          ? const Color(0xFF16A34A)
+                                          : Colors.white,
                                     ),
                                   ),
-
-                                  child: _loadingJoin
-                                      ? const SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : Text(
-                                          _joined
-                                              ? "Joined"
-                                              : "Join ${post?.activity?.toLowerCase() ?? ""}",
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                ),
-                              ),
-                            ),
                           ),
-                      )
-                    )
-                  ]
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -1427,16 +1428,17 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
             children: [
 
               Container(
-                width: 36,
-                height: 36,
+                width: 34,
+                height: 34,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200)
                 ),
                 child: const Icon(
                   Icons.insights_outlined,
                   color: Colors.black,
-                  size: 10,
+                  size: 14,
                 ),
               ),
 
@@ -1579,6 +1581,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
             // HEADER
             // =========================
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Container(
                   width: 34,
@@ -1591,15 +1594,18 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                   child: const Icon(
                     Icons.people,
                     color: Colors.black,
-                    size: 16,
+                    size: 14,
                   ),
                 ),
 
                 const SizedBox(width: 10),
 
-                Expanded(
+                // 👇 IMPORTANT: Flexible instead of Expanded
+                Flexible(
+                  fit: FlexFit.loose,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
                         "Wer dabei ist",
@@ -1608,6 +1614,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.4,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -1619,10 +1626,60 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                           color: Colors.grey.shade600,
                           fontWeight: FontWeight.w500,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
+
+                const SizedBox(width: 35),
+
+                // 👇 AVATARS (fixed width, no competition with text)
+                if (hasParticipants)
+                  SizedBox(
+                    width: 120, // 👈 KEY FIX: reserve space explicitly
+                    height: 32,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        for (int i = 0; i < participantAvatars.take(5).length; i++)
+                          Positioned(
+                            left: i * 18,
+                            child: CircleAvatar(
+                              radius: 14,
+                              backgroundImage: NetworkImage(participantAvatars[i]),
+                            ),
+                          ),
+
+                        if (count > 5)
+                          Positioned(
+                            left: 5 * 18,
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: const BoxDecoration(
+                                color: Colors.black,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  "+${count - 5}",
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  )
+                else
+                  const SizedBox(width: 120),
+
+                const SizedBox(width: 6),
 
                 Icon(
                   Icons.chevron_right,
@@ -1630,75 +1687,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                 ),
               ],
             ),
-
-            const SizedBox(height: 14),
-
-            // =========================
-            // AVATARS (more compact + higher integration)
-            // =========================
-            if (hasParticipants)
-              SizedBox(
-                height: 36,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    for (int i = 0; i < participantAvatars.take(6).length; i++)
-                      Positioned(
-                        left: i * 20,
-                        child: CircleAvatar(
-                          radius: 17,
-                          backgroundImage:
-                              NetworkImage(participantAvatars[i]),
-                        ),
-                      ),
-
-                    // +X bubble
-                    if (count > 6)
-                      Positioned(
-                        left: 6 * 22,
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: const BoxDecoration(
-                            color: Colors.black,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Center(
-                            child: Text(
-                              "+${count - 6}",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.people_outline,
-                      color: Colors.grey.shade400,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      "Noch keine Teilnehmer — sei der Erste",
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
           ],
         ),
       ),

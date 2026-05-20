@@ -15,7 +15,7 @@ class Post {
   final String? town;
   final String? createdAt;
   final String? group;
-  final String? frequency;
+  final String? joinMode;
   final int? userdistance;
 
   Post({
@@ -35,7 +35,7 @@ class Post {
     this.town,
     this.createdAt,
     this.group,
-    this.frequency,
+    this.joinMode,
     this.userdistance,
   });
 }

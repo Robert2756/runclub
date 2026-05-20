@@ -275,7 +275,6 @@ class FeedPageState extends State<FeedPage> {
                           longitude: post['longitude'],
                           town: post['town'],
                           createdAt: post['created_at'],
-                          frequency: post['frequency'],
                           userdistance: post['user_distance'],
                         ),
                         showImageMain: showImageMap[post['id'].toString()] ?? true,
