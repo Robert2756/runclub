@@ -17,6 +17,7 @@ class Post {
   final String? group;
   final String? joinMode;
   final int? userdistance;
+  final String? startsAt;
 
   Post({
     required this.id,
@@ -37,5 +38,6 @@ class Post {
     this.group,
     this.joinMode,
     this.userdistance,
+    this.startsAt,
   });
 }

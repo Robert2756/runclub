@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/profile.dart';
 import '../profile_page.dart';
+import '../models/post.dart';
 
 final supabase = Supabase.instance.client;
 final Map<String, Profile> _profileCache = {};
@@ -58,7 +59,6 @@ class Message {
 /// ----------------------
 
 class ActivityChat extends StatefulWidget {
-  final String activityId;
   final bool initialJoined;
   final bool initialRequested;
   final ValueChanged<bool>? onJoinChanged;
@@ -67,10 +67,10 @@ class ActivityChat extends StatefulWidget {
   final bool isActive;
   final VoidCallback markUnread;
   final String? joinMode;
+  final Post? post;
 
   const ActivityChat({
     super.key,
-    required this.activityId,
     required this.initialJoined,
     required this.initialRequested,
     this.onJoinChanged,
@@ -79,6 +79,7 @@ class ActivityChat extends StatefulWidget {
     required this.isActive,
     required this.markUnread,
     required this.joinMode,
+    required this.post
   });
 
   @override
@@ -135,7 +136,7 @@ class _ActivityChatState extends State<ActivityChat> {
     final res = await supabase
         .from('activity_messages')
         .select()
-        .eq('activity_id', widget.activityId)
+        .eq('activity_id', widget.post!.id)
         .order('created_at', ascending: false)
         .limit(_pageSize);
 
@@ -167,7 +168,7 @@ class _ActivityChatState extends State<ActivityChat> {
     final res = await supabase
         .from('activity_messages')
         .select()
-        .eq('activity_id', widget.activityId)
+        .eq('activity_id', widget.post!.id)
         .lt('created_at', last.createdAt.toIso8601String())
         .order('created_at', ascending: false)
         .limit(_pageSize);
@@ -205,7 +206,7 @@ class _ActivityChatState extends State<ActivityChat> {
 
   void _subscribeRealtime() {
     if (!_joined || _requested) return;
-    _channel = supabase.channel('activity-${widget.activityId}');
+    _channel = supabase.channel('activity-${widget.post!.id}');
 
     _channel?.onPostgresChanges(
       event: PostgresChangeEvent.insert,
@@ -214,7 +215,7 @@ class _ActivityChatState extends State<ActivityChat> {
       filter: PostgresChangeFilter(
         type: PostgresChangeFilterType.eq,
         column: 'activity_id',
-        value: widget.activityId,
+        value: widget.post!.id,
       ),
       callback: (payload) async {
         final msg = Message.fromJson(payload.newRecord);
@@ -254,7 +255,7 @@ class _ActivityChatState extends State<ActivityChat> {
 
     try {
       await supabase.from('activity_messages').insert({
-        'activity_id': widget.activityId,
+        'activity_id': widget.post!.id,
         'user_id': userId,
         'type': 'text',
         'content': text,
@@ -269,12 +270,13 @@ class _ActivityChatState extends State<ActivityChat> {
     if (_loadingJoin) return;
     setState(() => _loadingJoin = true);
 
-    final userId = supabase.auth.currentUser!.id;
+    try {
+      final userId = supabase.auth.currentUser!.id;
 
-    if (widget.joinMode == "Instant") {
-      try {
+      if (widget.joinMode == "Instant") {
+        // activity join mode "Instant"
         await supabase.from('activity_participants').insert({
-          'post_id': widget.activityId,
+          'post_id': widget.post!.id,
           'user_id': userId,
           'last_read_at': null,
           'status': "joined" ,
@@ -287,34 +289,32 @@ class _ActivityChatState extends State<ActivityChat> {
 
         await _bootstrap();
         widget.markUnread();
-
-      } catch (e) {
-        debugPrint("Join failed: $e");
-      } finally {
-        if (mounted) {
-          setState(() => _loadingJoin = false);
-        }
-      }
-    } else if (widget.joinMode == "Request") {
-      try {
+      } else if (widget.joinMode == "Request") {
+        // activity join mode "Request"
         await supabase.from('activity_participants').insert({
-          'post_id': widget.activityId,
+          'post_id': widget.post!.id,
           'user_id': userId,
           'last_read_at': null,
           'status': "requested"
         });
-
+        // notify creator
+        await supabase.from('notifications').insert({
+          'from_user': userId,
+          'to_user': widget.post!.creatorId,
+          'post_id': widget.post!.id,
+          'created_at': DateTime.now().toIso8601String(),
+          'type': 'request'
+        });
         setState(() {
           _requested = true;
           widget.onRequestedChanged?.call(true);
         });
-
-      } catch (e) {
-        debugPrint("Request failed: $e");
-      } finally {
-        if (mounted) {
-          setState(() => _loadingJoin = false);
-        }
+      }
+    } catch (e) {
+      debugPrint("Request or Join failed: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _loadingJoin = false);
       }
     }
   }

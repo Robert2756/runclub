@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'profile_page.dart';
+import 'services/data_formatter.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -17,42 +18,92 @@ class ParticipantsPage extends StatefulWidget {
 }
 
 class _ParticipantsPageState extends State<ParticipantsPage> {
-  String? creatorId;
-  String? participants;
-  bool hasHistory = true;
+  Map<String, dynamic> participantsStats = {};
+  late Future<Map<String, dynamic>> _future;
+  final dataFormatter = DataFormatter();
 
-Future<Map<String, dynamic>> fetchData() async {
-  final res = await supabase
-      .from('posts')
-      .select('creator_id, activity_participants(user_id, profiles(id, username, avatar_url))')
-      .eq('id', widget.postId)
-      .single();
+  @override
+  void initState() {
+    super.initState();
+    debugPrint("Init");
+    _future = fetchData();
+  }
 
-  return res;
-}
+  Future<Map<String, dynamic>> fetchData() async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final post = await supabase
+        .from('posts')
+        .select('''
+          creator_id,
+          activity_participants(
+            user_id,
+            profiles(
+              id,
+              username,
+              avatar_url
+            )
+          )
+        ''')
+        .eq('id', widget.postId)
+        .single();
+
+    final participants = post['activity_participants'] as List<dynamic>;
+    final currentUserId = supabase.auth.currentUser!.id;
+
+    Map<String, dynamic> statsMap = {};
+
+    for (final participant in participants) {
+      final userId = participant['user_id'];
+
+      // skip yourself
+      if (userId == currentUserId) continue;
+
+      final res = await supabase.rpc(
+        'get_connection_stats',
+        params: {
+          'user_a': currentUserId,
+          'user_b': userId,
+        },
+      );
+
+      final stats = (res as List).isNotEmpty ? res[0] : null;
+
+      statsMap[userId] = {
+        'together_count': stats?['together_count'] ?? 0,
+        'last_together': stats?['last_together'] != null
+            ? DateTime.parse(stats['last_together'])
+            : null,
+      };
+    }
+
+    return {
+      'creator_id': post['creator_id'],
+      'participants': participants,
+      'stats': statsMap,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Participants")),
-      body: FutureBuilder(
-        future: fetchData(),
+      appBar: AppBar(title: const Text("Teilnehmer")),
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: _future,
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final data = snapshot.data as Map<String, dynamic>;
-
-          final creatorId = data['creator_id'];
-          final participants = data['activity_participants'] as List;
+          final data = snapshot.data!;
+          final participants = data['participants'] as List;
+          final statsMap = data['stats'] as Map<String, dynamic>;
 
           if (participants.isEmpty) {
             return const Center(
               child: Padding(
                 padding: EdgeInsets.all(12.0),
                 child: Text(
-                  "No participants yet — be the first to join 🚀",
+                  "Bisher keine Teilnehmer — sei der Erste!",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16,
@@ -71,7 +122,11 @@ Future<Map<String, dynamic>> fetchData() async {
               final profile = participants[index]['profiles'];
               final userId = participants[index]['user_id'];
 
-              final isCreator = userId == creatorId;
+              final stats = statsMap[userId];
+              final togetherCount =
+                  stats?['together_count'] ?? 0;
+              final lastTogether =
+                  stats?['last_together'];
 
               return GestureDetector(
                 onTap: () {
@@ -100,9 +155,9 @@ Future<Map<String, dynamic>> fetchData() async {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(profile['username'] ?? 'Unknown'),
-                        if (hasHistory)
+                        if (togetherCount != 0)
                           Text(
-                            "2 gemeinsame Läufe • letzter vor 3 Wochen",
+                            "$togetherCount Läufe zusammen • letzter vor ${dataFormatter.formatTimeAgo(lastTogether)}",
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey,

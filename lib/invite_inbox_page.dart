@@ -14,7 +14,9 @@ class InviteInboxSheet extends StatefulWidget {
 class _InviteInboxSheetState extends State<InviteInboxSheet>
     with SingleTickerProviderStateMixin {
   bool loading = true;
-  bool loadAccept = false;
+  List<bool> loadStatesAccepts = [];
+  List<bool> loadStatesDeletes = [];
+  bool loadDelete = false;
   List<Map<String, dynamic>> invites = [];
   List<Map<String, dynamic>> requests = [];
 
@@ -35,7 +37,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         .from('notifications')
         .select('''
           *,
-          posts(title, date, time, town),
+          posts(id, title, date, time, town),
           profiles!notifications_from_user_fkey(
             username,
             avatar_url
@@ -46,6 +48,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         .order('created_at', ascending: false);
 
     setState(() {
+      debugPrint("Invites: $res");
       invites = List<Map<String, dynamic>>.from(res);
       loading = false;
     });
@@ -71,13 +74,14 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     setState(() {
       requests = List<Map<String, dynamic>>.from(res);
       loading = false;
-      debugPrint("Requests: $requests");
+      loadStatesAccepts = List.filled(requests.length, false);
+      loadStatesDeletes = List.filled(requests.length, false);
     });
   }
 
-  Future<void> acceptRequest(Map<String, dynamic> request) async {
+  Future<void> acceptRequest(Map<String, dynamic> request, int index) async {
     setState(() {
-      loadAccept = true;
+      loadStatesAccepts[index] = true;
     });
     debugPrint("Request id: ${request['id']}");
     final user = supabase.auth.currentUser!.id;
@@ -92,7 +96,46 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         })
         .eq('post_id', request['post_id'])
         .eq('user_id', request['from_user']);
+      
+      await deleteNotification(request, index);
+    } catch (e) {
+      debugPrint('Error accepting request: $e');
+    } finally {
+      await fetchRequests();
+      setState(() {
+        loadStatesAccepts[index] = false;
+      });
+    }
+  }
 
+  Future<void> deleteRequest(Map<String, dynamic> request, int index) async {
+    setState(() {
+      loadStatesDeletes[index] = true;
+    });
+
+    try {
+      // delete from_user from activity participants table
+      await supabase
+        .from('activity_participants')
+        .delete()
+        .eq('post_id', request['post_id'])
+        .eq('user_id', request['from_user']);
+      
+      await deleteNotification(request, index);
+
+    } catch (e) {
+      debugPrint('Error deleting from_user from activity: $e');
+    } finally {
+      await fetchRequests();
+      setState(() {
+        loadStatesDeletes[index] = false;
+      });
+    }
+  }
+
+  Future<void> deleteNotification(Map<String, dynamic> request, int index) async {
+
+    try {
       // delete request from notifications
       await supabase
         .from('notifications')
@@ -100,11 +143,11 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         .eq('id', request['id']);
 
     } catch (e) {
-      debugPrint('Error accepting request: $e');
+      debugPrint('Error deleting request: $e');
     } finally {
       await fetchRequests();
       setState(() {
-        loadAccept = false;
+        loadStatesDeletes[index] = false;
       });
     }
   }
@@ -112,13 +155,11 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
   void _openActivity(Map<String, dynamic> invite) {
     Navigator.pop(context);
 
-    final post = invite['posts'];
-
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ActivityPage(
-          postId: post['id'].toString(),
+          postId: invite['posts']['id'],
           userDistance: null,
         ),
       ),
@@ -213,10 +254,9 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                 children: [
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: loadAccept
+                      onPressed: (loadStatesAccepts[index] && !loadStatesDeletes[index])
                           ? null
-                          : () => acceptRequest(request),
-
+                          : () => acceptRequest(request, index),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.black,
                         foregroundColor: Colors.white,
@@ -226,7 +266,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                         ),
                       ),
 
-                      child: loadAccept
+                      child: loadStatesAccepts[index]
                           ? const SizedBox(
                               height: 18,
                               width: 18,
@@ -243,7 +283,9 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
 
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () => acceptRequest(request),
+                      onPressed: (loadStatesDeletes[index] && !loadStatesAccepts[index])
+                          ? null
+                          : () => deleteRequest(request, index),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Color.fromARGB(255, 255, 255, 255),
                         foregroundColor: const Color.fromARGB(255, 0, 0, 0),
@@ -252,7 +294,16 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      child: const Text("Löschen"),
+                        child: (loadStatesDeletes[index] && !loadStatesAccepts[index])
+                          ? const SizedBox(
+                              height: 18,
+                              width: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text("Löschen"),
                     ),
                   ),
                 ],

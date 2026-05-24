@@ -148,14 +148,15 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       distance: response['distance'],
       pace: response['pace'],
       speed: response['speed'],
-      date: response['date'],
-      time: response['time'],
+      // date: response['date'],
+      // time: response['time'],
       latitude: (response['latitude'] as num?)?.toDouble(),
       longitude: response['longitude']?.toDouble(),
       town: response['town'],
       createdAt: response['created_at'],
       joinMode: response['join_mode'],
-      userdistance: widget.userDistance
+      userdistance: widget.userDistance,
+      startsAt: response['starts_at']
     );
 
     final results = await Future.wait([
@@ -217,6 +218,30 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
     // count unread messages from user for this activity
     await _calculateUnread();
+  }
+
+  DateTime? parseDate(dynamic value) {
+    if (value == null) return null;
+
+    String s = value.toString().trim();
+
+    // 1. Fix space → T
+    s = s.replaceFirst(' ', 'T');
+
+    // 2. Fix ONLY broken trailing +00 (not +00:00)
+    s = s.replaceFirstMapped(
+      RegExp(r'\+00$'),
+      (_) => '+00:00',
+    );
+
+    // 3. Fix broken +00:00:00 → +00:00
+    s = s.replaceFirst('+00:00:00', '+00:00');
+
+    try {
+      return DateTime.parse(s);
+    } catch (_) {
+      return null; // fail gracefully instead of crashing
+    }
   }
 
   Future<void> _calculateUnread() async {
@@ -333,6 +358,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
           });
           setState(() {
             _requested = true;
+            _chatKey = UniqueKey();
           });
         }
       } else if (_joined && !_requested){
@@ -1069,7 +1095,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                       opacity: _chatOpacity,
                       child: ActivityChat(
                         key: _chatKey, 
-                        activityId: post!.id,
                         initialJoined: _joined,
                         initialRequested: _requested,
                         onJoinChanged: (v) async {
@@ -1080,12 +1105,16 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                           });
                         },
                         onRequestedChanged: (v) async {
-                          setState(() => _requested = v);
+                          setState(() {
+                            _requested = v;
+                            _chatKey = UniqueKey();
+                          });
                         },
                         isActive: _isChatActive,
                         onActiveRead: markChatAsRead,
                         markUnread: markChatAsRead,
                         joinMode: post!.joinMode,
+                        post: post,
                       )
                     ),
                   ),
@@ -1460,16 +1489,16 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
               Expanded(
                 child: _stat(
                   "Tag",
-                  (post!.date != null && post!.time != null)
-                      ? dataFormatter.formatActivityDate(DateTime.parse("${post!.date}T${post!.time!}"))
+                  (post!.startsAt != null)
+                      ? dataFormatter.formatActivityDate(DateTime.parse(post!.startsAt!))
                       : "-",
                 )
               ),
               Expanded(
                 child: _stat(
                   "Uhrzeit",
-                  (post!.date != null && post!.time != null)
-                      ? "${dataFormatter.formatTime(post!.date!, post!.time!)}Uhr"
+                  (post!.startsAt != null)
+                      ? "${dataFormatter.formatTime(DateTime.parse(post!.startsAt!))}Uhr"
                       : "—",
                 ),
               ),

@@ -152,39 +152,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     }
   }
 
-  // Future<void> _toggleJoin() async {
-  //   if (_loadingJoin) return; // prevent multiple taps
-  //   setState(() => _loadingJoin = true);
-
-  //   try {
-  //     if (!_joined) {
-  //       // join activity
-  //       await supabase.from('activity_participants').insert({
-  //         'post_id': widget.post.id,
-  //         'user_id': supabase.auth.currentUser!.id,
-  //       });
-  //     } else {
-  //       // optionally leave activity
-  //       await supabase.from('activity_participants')
-  //           .delete()
-  //           .eq('post_id', widget.post.id)
-  //           .eq('user_id', supabase.auth.currentUser!.id);
-  //     }
-
-  //     // toggle joined state -> update button UI immediately
-  //     setState(() => _joined = !_joined);
-
-  //     // imediately refresh participant avatars after joining/leaving
-  //     await fetchParticipantAvatars();
-
-  //   } catch (e) {
-  //     debugPrint('Error toggling join: $e');
-  //     // optionally show a SnackBar or toast
-  //   } finally {
-  //     setState(() => _loadingJoin = false);
-  //   }
-  // }
-
   String formatPostAge(dynamic createdAt) {
     if (createdAt == null) return "";
 
@@ -294,6 +261,25 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     );
   }
 
+  Widget _buildMedia() {
+    final hasImage = widget.post.imgurl != null;
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(
+        top: Radius.circular(20),
+      ),
+      child: AspectRatio(
+        aspectRatio: 1.1, // slightly more modern than 1:1
+        child: hasImage
+            ? Image.network(
+                widget.post.imgurl!,
+                fit: BoxFit.cover,
+              )
+            : _buildMap(),
+      ),
+    );
+  }
+
   // initial fetch when page is first opened
   @override
   void initState() {
@@ -310,10 +296,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     super.build(context);
     final theme = Theme.of(context);
     return Container(
-      // elevation: 2,
       color: Colors.white,
-      // shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      // margin: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -390,8 +373,8 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                       children: [
                         Expanded(
                           child: Text(
-                            ((widget.post.date != null && widget.post.time != null)
-                                    ? "${dataFormatter.formatWeekdayWithTime(widget.post.date!, widget.post.time!)}$bullet"
+                            ((widget.post.startsAt != null)
+                                    ? "${dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!))} $bullet ${dataFormatter.formatTime(DateTime.parse(widget.post.startsAt!))} $bullet "
                                     : "none$bullet") +
                                 (widget.post.town != null ? "${widget.post.town}" : "none") +
                                 (widget.post.userdistance != null
@@ -433,32 +416,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                           child: buildParticipantStack(_participantAvatars),
                         ),
                         const Spacer(),
-                        // ElevatedButton(
-                        //   onPressed: _loadingJoin ? null : _toggleJoin, // disable button while loading
-                        //   style: ElevatedButton.styleFrom(
-                        //     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                        //     shape: RoundedRectangleBorder(
-                        //       borderRadius: BorderRadius.circular(20),
-                        //     ),
-                        //     backgroundColor: _joined ? Colors.green : Colors.black,
-                        //   ),
-                        //   child: _loadingJoin
-                        //       ? const SizedBox(
-                        //           width: 16,
-                        //           height: 16,
-                        //           child: CircularProgressIndicator(
-                        //             color: Colors.white,
-                        //             strokeWidth: 2,
-                        //           ),
-                        //         )
-                        //       : Text(
-                        //           _joined ? "Joined" : "Join",
-                        //           style: const TextStyle(
-                        //             fontWeight: FontWeight.w600,
-                        //             color: Colors.white,
-                        //           ),
-                        //         ),
-                        // )
                       ]
                     )
                   ]

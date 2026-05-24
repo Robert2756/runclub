@@ -276,6 +276,7 @@ class FeedPageState extends State<FeedPage> {
                           town: post['town'],
                           createdAt: post['created_at'],
                           userdistance: post['user_distance'],
+                          startsAt: post['starts_at'],
                         ),
                         showImageMain: showImageMap[post['id'].toString()] ?? true,
                         onToggle: (val) {

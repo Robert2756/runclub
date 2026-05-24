@@ -67,14 +67,9 @@ class DataFormatter {
     return "$weekdayName $hour:$minute";
   }
 
-  String formatTime(String date, String time) {
-    // Parse the date + time
-    final dt = DateTime.parse("${date}T$time");
-
-    // Format hour and minute with leading zero if needed
+  String formatTime(DateTime dt) {
     final hour = dt.hour.toString().padLeft(2, '0');
     final minute = dt.minute.toString().padLeft(2, '0');
-
     return "$hour:$minute";
   }
 
@@ -99,6 +94,39 @@ class DataFormatter {
     }
 
     return DateFormat('d MMM', 'de_DE').format(date); // 12 May
+  }
+
+  String formatTimeAgo(DateTime lastTogether) {
+    final now = DateTime.now().toUtc();
+    final diff = now.difference(lastTogether);
+
+    if (diff.inMinutes < 60) {
+      final m = diff.inMinutes < 1 ? 1 : diff.inMinutes;
+      return "$m Minute${m == 1 ? '' : 'n'}";
+    }
+
+    if (diff.inHours < 24) {
+      final h = diff.inHours;
+      return "$h Stunde${h == 1 ? '' : 'n'}";
+    }
+
+    if (diff.inDays < 7) {
+      final d = diff.inDays;
+      return "$d Tag${d == 1 ? '' : 'en'}";
+    }
+
+    if (diff.inDays < 30) {
+      final w = (diff.inDays / 7).floor();
+      return "$w Woche${w == 1 ? '' : 'n'}";
+    }
+
+    if (diff.inDays < 365) {
+      final mo = (diff.inDays / 30).floor();
+      return "$mo Monat${mo == 1 ? '' : 'en'}";
+    }
+
+    final y = (diff.inDays / 365).floor();
+    return "$y Jahr${y == 1 ? '' : 'en'}";
   }
 
 }

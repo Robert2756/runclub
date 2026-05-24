@@ -1160,6 +1160,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
   String activity = "Laufen";
   DateTime? date;
   TimeOfDay? time;
+  DateTime? startsAt;
 
   bool canSubmit = false;        // form valid
   bool isLoading = false;        // request state
@@ -1252,6 +1253,16 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
 
   Future<bool> addPostToDatabase() async {
     debugPrint("Date: $date");
+    if (date != null && time != null) {
+      startsAt = DateTime(
+        date!.year,
+        date!.month,
+        date!.day,
+        time!.hour,
+        time!.minute,
+      ).toUtc();
+    }
+
     // insert post
     try {
       final response = await supabase
@@ -1271,6 +1282,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
           'longitude': mapCenter?.longitude ?? 0.0,
           'town': postTown ?? '',
           'creator_id': supabase.auth.currentUser!.id,
+          'starts_at': startsAt,
         })
         .select()
         .single();
