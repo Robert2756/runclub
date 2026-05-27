@@ -261,25 +261,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     );
   }
 
-  Widget _buildMedia() {
-    final hasImage = widget.post.imgurl != null;
-
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(
-        top: Radius.circular(20),
-      ),
-      child: AspectRatio(
-        aspectRatio: 1.1, // slightly more modern than 1:1
-        child: hasImage
-            ? Image.network(
-                widget.post.imgurl!,
-                fit: BoxFit.cover,
-              )
-            : _buildMap(),
-      ),
-    );
-  }
-
   // initial fetch when page is first opened
   @override
   void initState() {
@@ -340,12 +321,32 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         ),
                       ),
                         const SizedBox(width: 8),
-                        Text(
-                          _profileName ?? "Username",
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _profileName ?? "Username",
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              (widget.post.town != null ? "${widget.post.town}" : "none") +
+                              (widget.post.userdistance != null
+                                  ? (widget.post.userdistance! >= 1000
+                                      ? "$bullet${(widget.post.userdistance! / 1000).round()}\u00A0km"
+                                      : "$bullet${widget.post.userdistance!.round()}\u00A0m")
+                                  : "$bullet none"),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
                         const Spacer(),
                         Container(
@@ -362,7 +363,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         ),
                       ]
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 14),
                     Text(
                       widget.post.title,
                       style: Theme.of(context).textTheme.titleLarge,
@@ -374,14 +375,14 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         Expanded(
                           child: Text(
                             ((widget.post.startsAt != null)
-                                    ? "${dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!))} $bullet ${dataFormatter.formatTime(DateTime.parse(widget.post.startsAt!))} $bullet "
-                                    : "none$bullet") +
-                                (widget.post.town != null ? "${widget.post.town}" : "none") +
-                                (widget.post.userdistance != null
-                                    ? (widget.post.userdistance! >= 1000
-                                        ? "$bullet${(widget.post.userdistance! / 1000).round()}\u00A0km"
-                                        : "$bullet${widget.post.userdistance!.round()}\u00A0m")
-                                    : "$bullet none"),
+                                    ? "${dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!))} $bullet ${dataFormatter.formatTime(DateTime.parse(widget.post.startsAt!))}" : "none"),
+                                //   : "none$bullet") +
+                                // (widget.post.town != null ? "${widget.post.town}" : "none") +
+                                // (widget.post.userdistance != null
+                                //     ? (widget.post.userdistance! >= 1000
+                                //         ? "$bullet${(widget.post.userdistance! / 1000).round()}\u00A0km"
+                                //         : "$bullet${widget.post.userdistance!.round()}\u00A0m")
+                                //     : "$bullet none"),
                             style: TextStyle(
                               fontSize: 15,
                               color: Colors.grey[700],
@@ -393,15 +394,16 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         )
                       ],
                     ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        _buildChip(Icons.route, widget.post.distance != null ? "${dataFormatter.formatDistance(widget.post.distance!)} km" : "-"),
-                        const SizedBox(width: 8),
-                        _buildChip(Icons.speed, widget.post.pace != null ? dataFormatter.formatPace(widget.post.pace!) : "-"),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height:5),
+                    // Text(
+                    //   widget.post.description!,
+                    //   style: TextStyle(
+                    //     fontSize: 13,
+                    //     fontWeight: FontWeight.w400,
+                    //     color: Colors.grey[850],
+                    //     height: 1.2, // tighter line spacing
+                    //   ),
+                    // ),
                     Row(
                       children: [
                         GestureDetector(
@@ -416,82 +418,99 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                           child: buildParticipantStack(_participantAvatars),
                         ),
                         const Spacer(),
+                        Row(
+                          children: [
+                            _buildChip(Icons.route, widget.post.distance != null ? "${dataFormatter.formatDistance(widget.post.distance!)} km" : "-"),
+                            const SizedBox(width: 8),
+                            _buildChip(Icons.speed, widget.post.pace != null ? dataFormatter.formatPace(widget.post.pace!) : "-"),
+                          ],
+                        ),
+                        const SizedBox(width: 12),
                       ]
-                    )
+                    ),
+                    const SizedBox(height:5),
                   ]
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 5),
+          // const SizedBox(height: 5),
           // post has image
-          if (widget.post.imgurl != null)
-            Stack(
-              children: [
-                // main content
-                ClipRRect(
-                  // borderRadius: BorderRadius.circular(12),
-                  child: GestureDetector(
-                    onTap: () {
-                      widget.onToggle(!widget.showImageMain); // send new value to parent
-                    },
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 250),
-                      child: widget.showImageMain 
-                        ? _buildImage() 
-                        : Stack(
-                            children: [
-                              _buildMap(),
-                            ],
-                          ),
-                    ),
-                  )
-                ),
-                const SizedBox(height: 12),
-                // small preview
-                Positioned(
-                  bottom: 12,
-                  left: 12,
-                  child: GestureDetector(
-                    onTap: () {
-                      widget.onToggle(!widget.showImageMain);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(2), // thickness of border
-                      decoration: BoxDecoration(
-                        color: widget.showImageMain ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(16), // slightly larger than inner radius
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: SizedBox(
-                          width: 75,
-                          height: 75,
-                          child:widget.showImageMain
-                            ? IgnorePointer(child: _buildMap(initialZoom: 10, showMarker: false))
-                            : Image.network(widget.post.imgurl!, fit: BoxFit.cover)
-                        ),
-                      ),
-                    ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(0),
+                boxShadow: [
+                  BoxShadow(
+                    blurRadius: 20,
+                    offset: const Offset(0, 6),
+                    color: Colors.black.withOpacity(0.06),
                   ),
-                ),
-              ],
-            )
-          else
-            Stack(
-              children: [
-                // main content
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Stack(
-                    children: [
-                      _buildMap()
-                    ],
-                  )
-                )
-              ]
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: widget.post.imgurl != null
+                    ? Stack(
+                        children: [
+                          // Main media
+                          GestureDetector(
+                            onTap: () {
+                              widget.onToggle(!widget.showImageMain);
+                            },
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 250),
+                              child: widget.showImageMain
+                                  ? _buildImage()
+                                  : _buildMap(),
+                            ),
+                          ),
+
+                          // Small floating preview
+                          Positioned(
+                            bottom: 14,
+                            left: 14,
+                            child: GestureDetector(
+                              onTap: () {
+                                widget.onToggle(!widget.showImageMain);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(3),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(15),
+                                  child: SizedBox(
+                                    width: 76,
+                                    height: 76,
+                                    child: widget.showImageMain
+                                        ? IgnorePointer(
+                                            child: _buildMap(
+                                              initialZoom: 10,
+                                              showMarker: false,
+                                            ),
+                                          )
+                                        : Image.network(
+                                            widget.post.imgurl!,
+                                            fit: BoxFit.cover,
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+
+                    // No image -> only map
+                    : _buildMap(),
+              ),
             ),
-          const SizedBox(height: 8),
+          ),
+          const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.fromLTRB(
               15, // left
@@ -503,7 +522,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 2),
                 if ((widget.post.description ?? "").isNotEmpty) ...[
                   LayoutBuilder(
                     builder: (context, constraints) {
@@ -563,10 +581,8 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
 
                           endIndex--;
                         }
-
                         visibleDescription = charList.take(bestIndex).toString();
                       }
-
                       // Step 3: Build RichText
                       return GestureDetector(
                         onTap: exceedsTwoLines
@@ -599,7 +615,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                     },
                   )
                 ],
-                const SizedBox(height: 5),
+                const SizedBox(height: 3),
                 Text(
                  formatPostAge(widget.post.createdAt),
                   style: TextStyle(

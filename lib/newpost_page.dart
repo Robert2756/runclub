@@ -1169,35 +1169,6 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
   String? missingField;
   bool isLimitLoading = true;
 
-  // Widget _missingInfoBanner(String message) {
-  //   return AnimatedContainer(
-  //     duration: const Duration(milliseconds: 200),
-  //     margin: const EdgeInsets.only(bottom: 12),
-  //     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-  //     decoration: BoxDecoration(
-  //       color: const Color(0xFFF6F6F6),
-  //       borderRadius: BorderRadius.circular(12),
-  //       border: Border.all(color: Colors.black12),
-  //     ),
-  //     child: Row(
-  //       children: [
-  //         const Icon(Icons.info_outline, size: 18, color: Colors.black87),
-  //         const SizedBox(width: 8),
-  //         Expanded(
-  //           child: Text(
-  //             message,
-  //             style: const TextStyle(
-  //               fontSize: 13,
-  //               fontWeight: FontWeight.w500,
-  //               color: Colors.black87,
-  //             ),
-  //           ),
-  //         ),
-  //       ],
-  //     ),
-  //   );
-  // }
-
   void _validate() {
     String? error;
 
@@ -1282,7 +1253,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
           'longitude': mapCenter?.longitude ?? 0.0,
           'town': postTown ?? '',
           'creator_id': supabase.auth.currentUser!.id,
-          'starts_at': startsAt,
+          'starts_at': startsAt?.toIso8601String(),
         })
         .select()
         .single();

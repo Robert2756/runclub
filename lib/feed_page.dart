@@ -35,6 +35,11 @@ class FeedPageState extends State<FeedPage> {
   bool _isLoading = false; // prevents double fetch
   bool _hasMore = true; // more posts to load?
 
+  // radius filtering
+  double _radiusMeters = 2000; // start small: 2km
+  final double _maxRadiusMeters = 50000; // 50km cap
+  final double _radiusStepFactor = 2.5; // exponential expansion
+
   @override
   void initState() {
     super.initState();
@@ -257,7 +262,7 @@ class FeedPageState extends State<FeedPage> {
                     final post = posts[index];
 
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.only(bottom: 34),
                       child: PostCard(
                         key: ValueKey(post['id'].toString()),
                         post: Post(
