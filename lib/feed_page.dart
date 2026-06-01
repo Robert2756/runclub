@@ -8,9 +8,19 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'widgets/post_placeholder.dart';
 import 'models/post.dart';
+import 'dart:math';
+import 'widgets/loader.dart';
 final supabase = Supabase.instance.client;
 final imageService = ImageService();
 
+enum FeedStatus {
+  idle,
+  loadingInitial,
+  refreshing,
+  loadingMore,
+  applyCandidates,
+  exhausted,
+}
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key, required this.title});
   final String title;
@@ -19,25 +29,29 @@ class FeedPage extends StatefulWidget {
 }
 
 class FeedPageState extends State<FeedPage> {
+  Set<String> seenPostIds = {};
   List<Map<String, dynamic>> posts = [];
+  List<Map<String, dynamic>> candidatePool = [];
   Map<String, bool> showImageMap = {};
+  
   double? _userLat;
   double? _userLon;
   bool _locationEnabled = false;
   Map<String, bool> postTextLoaded = {};
   List<int> placeholderList = List.generate(5, (index) => index); // 5 skeleton posts
-  bool _feedInitializing = true;
   final ScrollController _scrollController = ScrollController();
-  bool isRefreshing = false;
-
+  int _dbOffset = 0;
   // paging state
-  int _page = 0; // current page
-  bool _isLoading = false; // prevents double fetch
+  final batch_size = 4;
+  final candidate_size = 20;
+  final fetch_size = 40;
   bool _hasMore = true; // more posts to load?
+  int _refreshVersion = 0;
+  FeedStatus _status = FeedStatus.loadingInitial;
 
   // radius filtering
   double _radiusMeters = 2000; // start small: 2km
-  final double _maxRadiusMeters = 50000; // 50km cap
+  final double _maxRadiusMeters = 100000; // 50km cap
   final double _radiusStepFactor = 2.5; // exponential expansion
 
   @override
@@ -48,24 +62,38 @@ class FeedPageState extends State<FeedPage> {
 
   Future<void> _initFeed() async {
     await _initUserLocation(); // wait for user location or skip if denied
-    await fetchPosts(); // fetch posts based on user location
+    await fetchCandidates(); // fetch posts based on user location
   }
 
   Future<void> _refreshFeed() async {
+    _refreshVersion++;
+    debugPrint("Status: $_status)");
+    if (_status == FeedStatus.refreshing) return;
+
+    setState(() {
+      _status = FeedStatus.refreshing;
+    });
+
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
-    if (isRefreshing) return;
-    isRefreshing = true;
 
     setState(() {
-      _page = 0;
       _hasMore = true;
       posts.clear();
-      _feedInitializing = true;
+      candidatePool.clear();
+      _dbOffset = 0;
+      _radiusMeters = 2000; // start small: 2km
+      seenPostIds.clear();
+      showImageMap.clear();
+      postTextLoaded.clear();
     });
+
     await _initFeed();
-    isRefreshing = false;
+
+    setState(() {
+      _status = FeedStatus.idle;
+    });
   }
 
   void scrollToTop() {
@@ -116,72 +144,258 @@ class FeedPageState extends State<FeedPage> {
     }
   }
 
-  Future<void> fetchPosts({bool loadMore = false}) async {
-    if (_isLoading || !_hasMore) return; // prevent multiple or unnecessary execution
-    if (isRefreshing && loadMore) return; // prevent pagination
-    _isLoading = true;
+  Future<void> fetchCandidates() async {
+    debugPrint("Fetch candidates");
+    final currentVersion = _refreshVersion; // capture current refresh version
+    if (!_hasMore) return;
 
-    final int limit = 4; // posts per page
-    final from = _page * limit;
-    final to = from + limit -1;
+    setState(() {
+      _status = FeedStatus.loadingMore;
+    });
 
     try {
-      debugPrint('from: $from and to: $to for page $_page');
+      // fallback if no location
+      if (!_locationEnabled || _userLat == null || _userLon == null) {
+        final data = await supabase
+            .from('posts')
+            .select()
+            .order('created_at', ascending: false)
+            .range(_dbOffset, _dbOffset + candidate_size - 1);
+        if (currentVersion != _refreshVersion) return; // return if user refreshed feed
 
-      final data = await supabase
-          .from('posts')
-          .select()
-          .order('created_at', ascending: false)
-          .range(from, to); // fetch the range
-      debugPrint('Fetched posts: $data');
+        if (data.isEmpty) {
+          _hasMore = false;
+          _status = FeedStatus.exhausted;
+          return;
+        }
 
-      if (data.isEmpty){
-        setState((){
-          _hasMore = false; // no more posts to load
-        });
-        return;
-      }
+        candidatePool.addAll(List<Map<String, dynamic>>.from(data));
+        _dbOffset += candidate_size;
 
-      final newPosts = List<Map<String, dynamic>>.from(data);
-      final Distance distance = Distance();
+      } else {
+        final lat = _userLat!;
+        final lon = _userLon!;
 
-      for (var post in newPosts) {
-        // initialize show image state for each post
-        showImageMap.putIfAbsent(post['id'].toString(), () => post["showImageMain"]);
-        // track if post text loaded
-        postTextLoaded.putIfAbsent(post['id'].toString(), () => false);
-        // compute distance only if location is enabled
-        if (_locationEnabled && _userLat != null && _userLon != null) {
-          final km = distance.as(
-            LengthUnit.Meter,
-            LatLng(_userLat!, _userLon!),
-            LatLng(post['latitude'], post['longitude']),
-          );
-          final int kmRounded = km.round();
-          post['user_distance'] = kmRounded;
-          postTextLoaded[post['id']] = true; // finished preprocessing the post
-        } else {
-          post['user_distance'] = null; // optional: show "-" in UI
+        // crude bounding box (fast prefilter)
+        final latDelta = _radiusMeters / 111320.0;
+        final lonDelta = _radiusMeters / (111320.0 * cos(lat * 3.1416 / 180));
+
+        final minLat = lat - latDelta;
+        final maxLat = lat + latDelta;
+        final minLon = lon - lonDelta;
+        final maxLon = lon + lonDelta;
+
+        final minStartTime = DateTime.now().toUtc().add(
+          const Duration(minutes: 10),
+        );
+        final data = await supabase
+            .from('posts')
+            .select()
+            .gte('latitude', minLat)
+            .lte('latitude', maxLat)
+            .gte('longitude', minLon)
+            .lte('longitude', maxLon)
+            .gte('starts_at', minStartTime.toIso8601String())
+            .limit(fetch_size);
+        if (currentVersion != _refreshVersion) return; // return if user refreshed feed
+        
+        // filter seen posts out
+        final prefilteredCandidates = List<Map<String, dynamic>>.from(data);
+        final filteredCandidates = prefilteredCandidates.where((p) =>
+          !seenPostIds.contains(p['id'])
+        );
+
+        if (filteredCandidates.length < candidate_size) {
+          if (_radiusMeters >= _maxRadiusMeters) { // max radius reached -> take posts anyway
+            candidatePool.addAll(filteredCandidates);
+            _hasMore = false;
+          }
+          else { // expand radius 
+            _expandRadius();
+            return;
+          }
+        }
+        else {
+          candidatePool.addAll(filteredCandidates);
         }
       }
-      // add posts to list and update UI
-      setState(() {
-        if (loadMore) {
-          posts.addAll(newPosts);
-        } else {
-          posts = newPosts;
-        }
-        _page += 1;
-        _feedInitializing = false;
-      });
+
+      await rankCandidates();
+      debugPrint("Status fetching candidates: $_status)");
+      await _applyPosts();
+
     } catch (e) {
-      debugPrint('Error fetching posts: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-        _feedInitializing = false;
-      });
+      debugPrint('Error fetching candidates: $e');
+    } finally {}
+  }
+
+  Future<void> rankCandidates() async {
+    final distance = Distance();
+    final now = DateTime.now();
+
+    const double d0 = 15000; // point where score has fallen to about 37% of its original value
+    const double t0 = 168;   // hours until event
+    const double f0 = 168;    // hours for freshness
+
+    for (var post in candidatePool) {
+      double distanceScore = 1.0;
+      double timeScore = 1.0;
+      double freshnessScore = 1.0;
+
+      if (_locationEnabled && _userLat != null && _userLon != null) {
+        final distanceMeters = distance.as(
+          LengthUnit.Meter,
+          LatLng(_userLat!, _userLon!),
+          LatLng(post['latitude'], post['longitude']),
+        );
+
+        post['user_distance'] = distanceMeters.round();
+
+        distanceScore = exp(-distanceMeters / d0);
+      }
+
+      // event time importance (planned activity relevance)
+      if (post['starts_at'] != null) {
+        final eventTime = DateTime.parse(post['starts_at']);
+        final hoursDiff =
+            eventTime.difference(now).inMinutes.abs() / 60.0;
+
+        timeScore = exp(-hoursDiff / t0);
+      }
+
+      // creation freshness
+      if (post['created_at'] != null) {
+        final createdAt = DateTime.parse(post['created_at']);
+        final ageHours =
+            now.difference(createdAt).inMinutes / 60.0;
+
+        freshnessScore = exp(-ageHours / f0);
+      }
+
+      post['score'] =
+        0.55 * timeScore +
+        0.35 * distanceScore +
+        0.10 * freshnessScore;
+      
+      debugPrint("Combined Score: ${post['score']}");
+
+      debugPrint(
+        "${post['title']}"
+        " score=${post['score'].toStringAsFixed(3)}"
+        " dist=${post['user_distance']}m"
+        " starts=${post['starts_at']}"
+        " created=${post['created_at']}"
+      );
+
     }
+
+    candidatePool.sort((a, b) => b['score'].compareTo(a['score']));
+
+  }
+
+  void _expandRadius() {
+    if (_radiusMeters >= _maxRadiusMeters) {
+      _hasMore = false;
+      return;
+    }
+
+    _radiusMeters = (_radiusMeters * _radiusStepFactor)
+        .clamp(2000, _maxRadiusMeters);
+
+    debugPrint("Expanding radius to $_radiusMeters");
+
+    // reset candidates
+    _dbOffset = 0;
+    candidatePool.clear();
+    fetchCandidates();
+  }
+
+  Future<void> _preloadSinglePost(Map<String, dynamic> post) async {
+    final tasks = <Future>[];
+
+    // 1. main image
+    final imageUrl = post['image_url'];
+    if (imageUrl != null) {
+      tasks.add(
+        precacheImage(NetworkImage(imageUrl), context),
+      );
+    }
+
+    // 2. profile image (example field name)
+    final profileUrl = post['creator_profile_image'];
+    if (profileUrl != null) {
+      tasks.add(
+        precacheImage(NetworkImage(profileUrl), context),
+      );
+    }
+
+    // 3. optional: any additional media
+    final extraImages = post['extra_images'];
+    if (extraImages is List) {
+      for (final url in extraImages) {
+        tasks.add(
+          precacheImage(NetworkImage(url), context),
+        );
+      }
+    }
+
+    await Future.wait(tasks);
+  }
+
+  Future<void> _preloadPostAssets(List<dynamic> posts) async {
+    final futures = <Future>[];
+
+    for (final post in posts) {
+      futures.add(_preloadSinglePost(post));
+    }
+
+    await Future.wait(futures);
+  }
+
+  Future<void> _applyPosts() async {
+    if (candidatePool.isEmpty) return;
+
+    setState(() {
+      _status = FeedStatus.applyCandidates;
+    });
+    const batchSize = 4;
+
+    // await Future.delayed(const Duration(seconds: 2)); // 👈 debug delay
+
+    if (candidatePool.length < 8 && _hasMore && _status == FeedStatus.idle) {
+      Future.microtask(() => fetchCandidates());
+    }
+
+    // take batch from candidates and remove from candidates
+    final take = min(batchSize, candidatePool.length);
+    final newPosts = candidatePool.sublist(0, take);
+    candidatePool.removeRange(0, take);
+    await _preloadPostAssets(newPosts);
+
+    // add to seen post IDs
+    for (final post in newPosts) {
+      seenPostIds.add(post['id'].toString());
+    }
+
+    for (var post in newPosts) {
+      showImageMap.putIfAbsent(
+        post['id'].toString(),
+        () => post["showImageMain"],
+      );
+
+      postTextLoaded.putIfAbsent(
+        post['id'].toString(),
+        () => false,
+      );
+    }
+
+    setState(() {
+      posts.addAll(newPosts);
+
+      _status = candidatePool.isEmpty && !_hasMore
+          ? FeedStatus.exhausted
+          : FeedStatus.idle;
+    });
   }
 
   Future<void> uploadPostImage(File? compressedImage, String path) async {
@@ -212,12 +426,9 @@ class FeedPageState extends State<FeedPage> {
 
             return NotificationListener<ScrollNotification>(
               onNotification: (ScrollNotification scrollInfo) {
-                // check if near the bottom and not already loading
-                if (!_isLoading &&
-                    !isRefreshing &&
-                    _hasMore &&
+                if (_status == FeedStatus.idle &&
                     scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
-                  fetchPosts(loadMore: true); // load next batch
+                  _applyPosts(); // load next batch
                 }
                 return false; // return false to allow the scroll to continue
               },
@@ -238,59 +449,79 @@ class FeedPageState extends State<FeedPage> {
                   ),
                   itemCount: posts.isEmpty
                     ? 1 // ALWAYS exactly one item during initial state
-                    : posts.length + (_hasMore ? 1 : 0),
+                    : posts.length + (_status == FeedStatus.exhausted ? 1 : 0) + (_status == FeedStatus.loadingMore || _status == FeedStatus.applyCandidates ? 1 : 0), // add extra item for pagination loader or feed exhausted message
                   itemBuilder: (context, index) {
                     /// 1. INITIAL LOADING STATE
-                    if (posts.isEmpty) {
+                    if (_status == FeedStatus.loadingInitial && _status != FeedStatus.refreshing ) {
                       return const Padding(
                         padding: EdgeInsets.only(bottom: 16),
-                        child: PostPlaceholder(),
+                        child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: Center(
+                              child: FeedRefreshSpinner(),
+                            ),
+                          ) //PostPlaceholder(),
                       );
                     }
 
                     /// 2. PAGINATION LOADER (only AFTER posts exist)
-                    if (index >= posts.length) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                        child: Center(
-                          child: PostPlaceholder(),
+                    final isFooter = index >= posts.length;
+
+                    if (isFooter) {
+                      if (_status == FeedStatus.exhausted) {
+                        return const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(child: Text("No more posts")),
+                        );
+                      }
+
+                      debugPrint("Feed status: $_status");
+
+                      if (_status == FeedStatus.loadingMore ||
+                          _status == FeedStatus.applyCandidates) {
+                          debugPrint("Show pagination loader");
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Center(child: FeedRefreshSpinner()),
+                        );
+                      }
+
+                      // return const SizedBox.shrink();
+                    }
+
+                    if (index < posts.length) {
+                      final post = posts[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 34),
+                        child: PostCard(
+                          key: ValueKey(post['id'].toString()),
+                          post: Post(
+                            id: post['id'].toString(),
+                            title: post['title'],
+                            creatorId: post['creator_id'],
+                            imgurl: post['image_url'],
+                            description: post['description'],
+                            activity: post['activity'],
+                            distance: post['distance'],
+                            pace: post['pace'],
+                            date: post['date'],
+                            time: post['time'],
+                            latitude: post['latitude'],
+                            longitude: post['longitude'],
+                            town: post['town'],
+                            createdAt: post['created_at'],
+                            userdistance: post['user_distance'],
+                            startsAt: post['starts_at'],
+                          ),
+                          showImageMain: showImageMap[post['id'].toString()] ?? true,
+                          onToggle: (val) {
+                            setState(() {
+                              showImageMap[post['id'].toString()] = val;
+                            });
+                          },
                         ),
                       );
                     }
-
-                    // 3. Safe access
-                    final post = posts[index];
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 34),
-                      child: PostCard(
-                        key: ValueKey(post['id'].toString()),
-                        post: Post(
-                          id: post['id'].toString(),
-                          title: post['title'],
-                          creatorId: post['creator_id'],
-                          imgurl: post['image_url'],
-                          description: post['description'],
-                          activity: post['activity'],
-                          distance: post['distance'],
-                          pace: post['pace'],
-                          date: post['date'],
-                          time: post['time'],
-                          latitude: post['latitude'],
-                          longitude: post['longitude'],
-                          town: post['town'],
-                          createdAt: post['created_at'],
-                          userdistance: post['user_distance'],
-                          startsAt: post['starts_at'],
-                        ),
-                        showImageMain: showImageMap[post['id'].toString()] ?? true,
-                        onToggle: (val) {
-                          setState(() {
-                            showImageMap[post['id'].toString()] = val;
-                          });
-                        },
-                      ),
-                    );
                   }
                 )
               )
@@ -313,10 +544,12 @@ class FeedPageState extends State<FeedPage> {
             );
               if (result == true) {
                 // refresh paging state of feed
-                _page = 0;
                 _hasMore = true;
                 posts = [];
-                fetchPosts(loadMore: true);
+                _dbOffset = 0;
+                // radius filtering
+                _radiusMeters = 2000; // start small: 2km
+                fetchCandidates();
               }
             },
             backgroundColor: Colors.black,
