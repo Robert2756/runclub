@@ -32,6 +32,7 @@ class FeedPageState extends State<FeedPage> {
   Set<String> seenPostIds = {};
   List<Map<String, dynamic>> posts = [];
   List<Map<String, dynamic>> candidatePool = [];
+  List<Map<String, dynamic>> additionalPostData = [];
   Map<String, bool> showImageMap = {};
   
   double? _userLat;
@@ -67,7 +68,6 @@ class FeedPageState extends State<FeedPage> {
 
   Future<void> _refreshFeed() async {
     _refreshVersion++;
-    debugPrint("Status: $_status)");
     if (_status == FeedStatus.refreshing) return;
 
     setState(() {
@@ -107,7 +107,6 @@ class FeedPageState extends State<FeedPage> {
   Future<void> _initUserLocation() async {
     try {
       final position = await getUserLocation();
-      debugPrint("User lat: ${position?.latitude}, lon: ${position?.longitude}");
       if (position != null) {
         _userLat = position.latitude;
         _userLon = position.longitude;
@@ -145,7 +144,6 @@ class FeedPageState extends State<FeedPage> {
   }
 
   Future<void> fetchCandidates() async {
-    debugPrint("Fetch candidates");
     final currentVersion = _refreshVersion; // capture current refresh version
     if (!_hasMore) return;
 
@@ -188,6 +186,7 @@ class FeedPageState extends State<FeedPage> {
         final minStartTime = DateTime.now().toUtc().add(
           const Duration(minutes: 10),
         );
+        // fetch post
         final data = await supabase
             .from('posts')
             .select()
@@ -197,14 +196,14 @@ class FeedPageState extends State<FeedPage> {
             .lte('longitude', maxLon)
             .gte('starts_at', minStartTime.toIso8601String())
             .limit(fetch_size);
-        if (currentVersion != _refreshVersion) return; // return if user refreshed feed
-        
+
         // filter seen posts out
         final prefilteredCandidates = List<Map<String, dynamic>>.from(data);
         final filteredCandidates = prefilteredCandidates.where((p) =>
           !seenPostIds.contains(p['id'])
         );
 
+        if (currentVersion != _refreshVersion) return; // return if user refreshed feed
         if (filteredCandidates.length < candidate_size) {
           if (_radiusMeters >= _maxRadiusMeters) { // max radius reached -> take posts anyway
             candidatePool.addAll(filteredCandidates);
@@ -278,7 +277,6 @@ class FeedPageState extends State<FeedPage> {
         0.10 * freshnessScore;
       
       debugPrint("Combined Score: ${post['score']}");
-
       debugPrint(
         "${post['title']}"
         " score=${post['score'].toStringAsFixed(3)}"
@@ -286,11 +284,8 @@ class FeedPageState extends State<FeedPage> {
         " starts=${post['starts_at']}"
         " created=${post['created_at']}"
       );
-
     }
-
     candidatePool.sort((a, b) => b['score'].compareTo(a['score']));
-
   }
 
   void _expandRadius() {
@@ -310,50 +305,8 @@ class FeedPageState extends State<FeedPage> {
     fetchCandidates();
   }
 
-  Future<void> _preloadSinglePost(Map<String, dynamic> post) async {
-    final tasks = <Future>[];
-
-    // 1. main image
-    final imageUrl = post['image_url'];
-    if (imageUrl != null) {
-      tasks.add(
-        precacheImage(NetworkImage(imageUrl), context),
-      );
-    }
-
-    // 2. profile image (example field name)
-    final profileUrl = post['creator_profile_image'];
-    if (profileUrl != null) {
-      tasks.add(
-        precacheImage(NetworkImage(profileUrl), context),
-      );
-    }
-
-    // 3. optional: any additional media
-    final extraImages = post['extra_images'];
-    if (extraImages is List) {
-      for (final url in extraImages) {
-        tasks.add(
-          precacheImage(NetworkImage(url), context),
-        );
-      }
-    }
-
-    await Future.wait(tasks);
-  }
-
-  Future<void> _preloadPostAssets(List<dynamic> posts) async {
-    final futures = <Future>[];
-
-    for (final post in posts) {
-      futures.add(_preloadSinglePost(post));
-    }
-
-    await Future.wait(futures);
-  }
-
   Future<void> _applyPosts() async {
-    if (candidatePool.isEmpty) return;
+    // if (candidatePool.isEmpty) return;
 
     setState(() {
       _status = FeedStatus.applyCandidates;
@@ -370,13 +323,13 @@ class FeedPageState extends State<FeedPage> {
     final take = min(batchSize, candidatePool.length);
     final newPosts = candidatePool.sublist(0, take);
     candidatePool.removeRange(0, take);
-    await _preloadPostAssets(newPosts);
 
     // add to seen post IDs
     for (final post in newPosts) {
       seenPostIds.add(post['id'].toString());
     }
 
+    // fetch additional information
     for (var post in newPosts) {
       showImageMap.putIfAbsent(
         post['id'].toString(),
@@ -387,11 +340,28 @@ class FeedPageState extends State<FeedPage> {
         post['id'].toString(),
         () => false,
       );
+
+      // fetch additional information
+      final additionalPostData = await Future.wait([
+        supabase
+            .from('profiles')
+            .select('avatar_url, username')
+            .eq('id', post['creator_id'])
+            .single() as Future<dynamic>,
+        supabase
+            .from('activity_participants')
+            .select('user_id')
+            .eq('post_id', post['id']) as Future<dynamic>
+      ]);
+
+      // add to post
+      post['username'] = additionalPostData[0]['username'];
+      post['avatar_url'] = additionalPostData[0]['avatar_url'];
+      post['participant_ids'] = (additionalPostData[1] as List).map((p) => p['user_id']).toList();
     }
 
     setState(() {
       posts.addAll(newPosts);
-
       _status = candidatePool.isEmpty && !_hasMore
           ? FeedStatus.exhausted
           : FeedStatus.idle;
@@ -468,24 +438,20 @@ class FeedPageState extends State<FeedPage> {
                     final isFooter = index >= posts.length;
 
                     if (isFooter) {
-                      if (_status == FeedStatus.exhausted) {
-                        return const Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(child: Text("No more posts")),
-                        );
-                      }
-
-                      debugPrint("Feed status: $_status");
+                      // if (_status == FeedStatus.exhausted) {
+                      //   return const Padding(
+                      //     padding: EdgeInsets.all(24),
+                      //     child: Center(child: Text("No more posts")),
+                      //   );
+                      // }
 
                       if (_status == FeedStatus.loadingMore ||
                           _status == FeedStatus.applyCandidates) {
-                          debugPrint("Show pagination loader");
                         return const Padding(
                           padding: EdgeInsets.symmetric(vertical: 16),
                           child: Center(child: FeedRefreshSpinner()),
                         );
                       }
-
                       // return const SizedBox.shrink();
                     }
 
@@ -513,6 +479,9 @@ class FeedPageState extends State<FeedPage> {
                             userdistance: post['user_distance'],
                             startsAt: post['starts_at'],
                           ),
+                          usernameCreator: post['username'],
+                          avatarUrlCreator: post['avatar_url'],
+                          participantIds: post["participant_ids"],
                           showImageMain: showImageMap[post['id'].toString()] ?? true,
                           onToggle: (val) {
                             setState(() {

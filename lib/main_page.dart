@@ -16,22 +16,59 @@ class MainPage extends StatefulWidget {
   State<MainPage> createState() => _MainPageState();
 }
 
-class _MainPageState extends State<MainPage> {
+class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   int _currentIndex = 0;
+  int _notificationCount = 0;
   String? _avatarUrl;
   final supabase = Supabase.instance.client;
   late final List<Widget> pages;
   final GlobalKey<FeedPageState> _feedKey = GlobalKey();
+  late final RealtimeChannel _notificationChannel;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     fetchProfileImage();
+    fetchNotificationCount();
+
+    final userId = supabase.auth.currentUser!.id;
+    _notificationChannel = supabase
+      .channel('notifications-$userId')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'notifications',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'to_user',
+          value: userId,
+        ),
+        callback: (payload) {
+          fetchNotificationCount();
+        },
+      )
+      .subscribe();
 
     pages = [
       FeedPage(key: _feedKey, title: "Feed"),
       const HistoryPage(title: "History"),
     ];
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.addObserver(this);
+    supabase.removeChannel(_notificationChannel);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      fetchNotificationCount();
+    }
   }
 
   // fetch profile image from database
@@ -50,6 +87,25 @@ class _MainPageState extends State<MainPage> {
       });
     } catch (e) {
       debugPrint('Error fetching profile image: $e');
+    }
+  }
+
+  // fetch number of notifications (invitations or requests)
+  Future<void> fetchNotificationCount() async {
+    try {
+      final userId = supabase.auth.currentUser!.id;
+
+      final response = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('to_user', userId)
+          .eq('is_seen', false);
+
+      setState(() {
+        _notificationCount = response.length;
+      });
+    } catch (e) {
+      debugPrint('Error fetching notification count: $e');
     }
   }
 
@@ -79,25 +135,43 @@ class _MainPageState extends State<MainPage> {
           IconButton(
             tooltip: 'Einladungen',
             icon: Stack(
+              clipBehavior: Clip.none,
               children: [
                 const Icon(Icons.mail_outline),
 
-                // optional badge
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
+                if (_notificationCount > 0)
+                  Positioned(
+                    right: -6,
+                    top: -6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      constraints: const BoxConstraints(minWidth: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        _notificationCount > 99 ? '99+' : '$_notificationCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
-            onPressed: () {
+            onPressed: () async{
+              final userId = supabase.auth.currentUser!.id;
+              await supabase
+                  .from('notifications')
+                  .update({'is_seen': true})
+                  .eq('to_user', userId)
+                  .eq('is_seen', false);
+              if (!mounted) return;
+
               showModalBottomSheet(
                 context: context,
                 isScrollControlled: true,
@@ -105,7 +179,11 @@ class _MainPageState extends State<MainPage> {
                 shape: const RoundedRectangleBorder(
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
-                builder: (_) => const InviteInboxSheet(),
+                builder: (_) => InviteInboxSheet(
+                  onMarkedSeen: () async {
+                    await fetchNotificationCount();
+                  },
+                ),
               );
             },
           ),

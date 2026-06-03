@@ -5,7 +5,12 @@ import 'activity_page.dart';
 final supabase = Supabase.instance.client;
 
 class InviteInboxSheet extends StatefulWidget {
-  const InviteInboxSheet({super.key});
+  final Future<void> Function()? onMarkedSeen;
+
+  const InviteInboxSheet({
+    super.key,
+    this.onMarkedSeen,
+  });
 
   @override
   State<InviteInboxSheet> createState() => _InviteInboxSheetState();
@@ -19,15 +24,82 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
   bool loadDelete = false;
   List<Map<String, dynamic>> invites = [];
   List<Map<String, dynamic>> requests = [];
-
   late TabController _tabController;
+
+  bool _invitesLoaded = false;
+  bool _requestsLoaded = false;
+
+  bool _invitesSeenMarked = false;
+  bool _requestsSeenMarked = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
+
     fetchInvites();
     fetchRequests();
+
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) return;
+
+      if (_tabController.index == 1) {
+        _tryMarkRequestsSeen();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _markAsSeenInvites() async {
+    debugPrint("Marking invites as seen...");
+    final userId = supabase.auth.currentUser!.id;
+
+    await supabase
+        .from('notifications')
+        .update({'is_seen': true})
+        .eq('to_user', userId)
+        .eq('type', 'invite')
+        .eq('is_seen', false);
+
+    await widget.onMarkedSeen?.call();
+  }
+
+  Future<void> _markAsSeenRequests() async {
+    debugPrint("Marking requests as seen...");
+    final userId = supabase.auth.currentUser!.id;
+
+    await supabase
+        .from('notifications')
+        .update({'is_seen': true})
+        .eq('to_user', userId)
+        .eq('type', 'request')
+        .eq('is_seen', false);
+    
+    await widget.onMarkedSeen?.call();
+  }
+
+  void _tryMarkInvitesSeen() {
+    debugPrint("Trying to mark invites seen: invitesLoaded=$_invitesLoaded, invitesSeenMarked=$_invitesSeenMarked");
+    if (!_invitesLoaded || _invitesSeenMarked) return;
+    if (!mounted) return;
+
+    _invitesSeenMarked = true;
+    _markAsSeenInvites();
+  }
+
+  void _tryMarkRequestsSeen() {
+    debugPrint("Trying to mark requests seen: requestsLoaded=$_requestsLoaded, requestsSeenMarked=$_requestsSeenMarked, currentTab=${_tabController.index}");
+    if (!_requestsLoaded || _requestsSeenMarked) return;
+    if (_tabController.index != 1) return;
+    debugPrint("Current tab: ${_tabController.index}");
+
+    _requestsSeenMarked = true;
+    _markAsSeenRequests();
   }
 
   Future<void> fetchInvites() async {
@@ -51,7 +123,9 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
       debugPrint("Invites: $res");
       invites = List<Map<String, dynamic>>.from(res);
       loading = false;
+      _invitesLoaded = true;
     });
+    _tryMarkInvitesSeen();
   }
 
   Future <void> fetchRequests() async {
@@ -76,7 +150,9 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
       loading = false;
       loadStatesAccepts = List.filled(requests.length, false);
       loadStatesDeletes = List.filled(requests.length, false);
+      _requestsLoaded = true;
     });
+    _tryMarkRequestsSeen();
   }
 
   Future<void> acceptRequest(Map<String, dynamic> request, int index) async {
@@ -167,6 +243,16 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
   }
 
   // ---------------- SAFE PLACEHOLDERS ----------------
+  Widget _newDot() {
+    return Container(
+      width: 8,
+      height: 8,
+      decoration: const BoxDecoration(
+        color: Colors.blueAccent,
+        shape: BoxShape.circle,
+      ),
+    );
+  }
 
   Widget _emptyTab(String text) {
     return Center(
@@ -192,6 +278,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         final request = requests[index];
         final post = request['posts'];
         final fromUser = request['profiles'];
+        final isNew = request['is_seen'] == false;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -204,25 +291,39 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
                     radius: 16,
-                    backgroundImage:
-                        fromUser?['avatar_url'] != null
-                            ? NetworkImage(fromUser['avatar_url'])
-                            : null,
+                    backgroundImage: fromUser?['avatar_url'] != null
+                        ? NetworkImage(fromUser['avatar_url'])
+                        : null,
                     child: fromUser?['avatar_url'] == null
                         ? const Icon(Icons.person, size: 16)
                         : null,
                   ),
+
                   const SizedBox(width: 8),
+
                   Expanded(
-                    child: Text(
-                      "${fromUser?['username'] ?? 'Jemand'} möchte an deiner Aktivität teilnehmen",
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            "${fromUser?['username'] ?? 'Jemand'} möchte an deiner Aktivität teilnehmen",
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+
+                        if (isNew) ...[
+                          const SizedBox(width: 6),
+                          _newDot(),
+                        ],
+                      ],
                     ),
                   ),
                 ],
@@ -330,6 +431,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         final invite = invites[index];
         final post = invite['posts'];
         final fromUser = invite['profiles'];
+        final isNew = invite['is_seen'] == false;
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -355,12 +457,24 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      "${fromUser?['username'] ?? 'Jemand'} hat dich eingeladen",
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            "${fromUser?['username'] ?? 'Jemand'} hat dich eingeladen",
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+
+                        if (isNew) ...[
+                          const SizedBox(width: 6),
+                          _newDot(),
+                        ],
+                      ],
                     ),
                   ),
                 ],

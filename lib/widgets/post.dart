@@ -12,30 +12,34 @@ import '../profile_page.dart';
 import '../participant_page.dart';
 import '../activity_page.dart';
 import 'post_placeholder.dart';
+
 final supabase = Supabase.instance.client;
 
 class PostCard extends StatefulWidget {
   final Post post;
   final bool showImageMain;
   final ValueChanged<bool> onToggle; // parent is rebuild when calling 
+  final String usernameCreator;
+  final String avatarUrlCreator;
+  final List participantIds;
 
   const PostCard({
     super.key,
     required this.post,
     required this.showImageMain,
     required this.onToggle,
+    required this.usernameCreator,
+    required this.avatarUrlCreator,
+    required this.participantIds,
   });
   @override
   State<PostCard> createState() => _PostCardState();
 }
 
 class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAliveClientMixin {
-  String? _avatarUrl;
-  String? _profileName;
   final dataFormatter = DataFormatter();
   bool _descExpanded = false;
   bool _joined = false;
-  bool _loadingJoin = false;
   List<String> _participantAvatars = [];
   List<String> debugParticipants = [
     'https://i.pravatar.cc/40?img=11',
@@ -55,36 +59,20 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     try {
     final results = await Future.wait([
       supabase
-          .from('profiles')
-          .select('avatar_url, username')
-          .eq('id', widget.post.creatorId)
-          .single() as Future<dynamic>,
-
-      supabase
-          .from('activity_participants')
-          .select('user_id')
-          .eq('post_id', widget.post.id) as Future<dynamic>,
-
-      supabase
           .from('activity_participants')
           .select('id')
           .eq('post_id', widget.post.id)
           .eq('user_id', supabase.auth.currentUser!.id)
           .maybeSingle() as Future<dynamic>,
     ]);
-
-      final profile = results[0];
-      final participants = results[1] as List;
-      final joinedRes = results[2];
-
-      final userIds = participants.map((p) => p['user_id']).toList();
+      final joinedRes = results[0];
 
       List<String> avatars = [];
-      if (userIds.isNotEmpty) {
+      if (widget.participantIds.isNotEmpty) {
         final avatarRes = await supabase
             .from('profiles')
             .select('avatar_url')
-            .filter('id', 'in', userIds);
+            .filter('id', 'in', widget.participantIds);
 
         avatars = (avatarRes as List)
             .map((a) => a['avatar_url'] as String)
@@ -92,8 +80,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
       }
 
       setState(() {
-        _avatarUrl = profile['avatar_url'];
-        _profileName = profile['username'];
         _participantAvatars = [
           ...avatars, // at to beginning
           ...debugParticipants // DEBUGGING
@@ -241,7 +227,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 20, color: Colors.black87),
+        Icon(icon, size: 20, color: const Color.fromARGB(61, 0, 0, 0)), // Colors.black87
         const SizedBox(width: 4),
         Text(label,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
@@ -266,7 +252,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   void initState() {
     super.initState();
     loadAll();
-    // fetchParticipantAvatars();
   }
 
   @override
@@ -313,11 +298,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         },
                         child: CircleAvatar(
                           radius: 20,
-                          backgroundImage: _avatarUrl != null
-                              ? NetworkImage(_avatarUrl!)
-                              : const NetworkImage(
-                                  "https://media.istockphoto.com/id/2221502929/de/vektor/flache-abbildung-in-graustufen-avatar-benutzerprofil-personensymbol-geschlechtsneutrale.jpg",
-                                ),
+                          backgroundImage: NetworkImage(widget.avatarUrlCreator)
                         ),
                       ),
                         const SizedBox(width: 8),
@@ -325,7 +306,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _profileName ?? "Username",
+                              widget.usernameCreator,
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w600,
@@ -335,8 +316,8 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                               (widget.post.town != null ? "${widget.post.town}" : "none") +
                               (widget.post.userdistance != null
                                   ? (widget.post.userdistance! >= 1000
-                                      ? "$bullet${(widget.post.userdistance! / 1000).round()}\u00A0km"
-                                      : "$bullet${widget.post.userdistance!.round()}\u00A0m")
+                                      ? "$bullet${(widget.post.userdistance! / 1000).round()}\u00A0km entfernt"
+                                      : "$bullet${widget.post.userdistance!.round()}\u00A0m entfernt")
                                   : "$bullet none"),
                               style: TextStyle(
                                 fontSize: 12,
@@ -363,7 +344,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         ),
                       ]
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 20),
                     Text(
                       widget.post.title,
                       style: Theme.of(context).textTheme.titleLarge,
@@ -394,7 +375,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         )
                       ],
                     ),
-                    const SizedBox(height:5),
+                    const SizedBox(height:12),
                     // Text(
                     //   widget.post.description!,
                     //   style: TextStyle(
@@ -415,7 +396,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                               ),
                             );
                           },
-                          child: buildParticipantStack(_participantAvatars),
+                          child: buildParticipantStack(_participantAvatars, (widget.participantIds.length + debugParticipants.length))
                         ),
                         const Spacer(),
                         Row(
@@ -510,7 +491,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
               ),
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.fromLTRB(
               15, // left
@@ -525,7 +506,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                 if ((widget.post.description ?? "").isNotEmpty) ...[
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final username = "${_profileName ?? "Username"} ";
+                      final username = widget.usernameCreator;
                       final description = widget.post.description ?? "";
                       const usernameStyle = TextStyle(fontWeight: FontWeight.bold, fontSize: 15);
                       const descStyle = TextStyle(fontSize: 14);
@@ -536,6 +517,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         text: TextSpan(
                           children: [
                             TextSpan(text: username, style: usernameStyle),
+                            TextSpan(text: "\u00A0"),
                             TextSpan(text: description, style: descStyle),
                           ],
                         ),
@@ -557,6 +539,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                             text: TextSpan(
                               children: [
                                 TextSpan(text: username, style: usernameStyle),
+                                TextSpan(text: "\u00A0"),
                                 TextSpan(
                                   text: charList.take(endIndex).toString(),
                                   style: descStyle,
@@ -592,6 +575,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                           TextSpan(
                             children: [
                               TextSpan(text: username, style: usernameStyle),
+                              TextSpan(text: "\u00A0"),
                               TextSpan(
                                 text: _descExpanded
                                     ? description
@@ -615,7 +599,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                     },
                   )
                 ],
-                const SizedBox(height: 3),
+                const SizedBox(height: 6),
                 Text(
                  formatPostAge(widget.post.createdAt),
                   style: TextStyle(
