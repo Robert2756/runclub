@@ -81,11 +81,11 @@ class DataFormatter {
     final difference = target.difference(today).inDays;
 
     if (difference == 0) {
-      return "Today";
+      return "Heute";
     }
 
     if (difference == 1) {
-      return "Tomorrow";
+      return "Morgen";
     }
 
     if (difference > 1 && difference < 7) {
@@ -126,6 +126,39 @@ class DataFormatter {
 
     final y = (diff.inDays / 365).floor();
     return "$y Jahr${y == 1 ? '' : 'en'}";
+  }
+
+  String activityRelativeTime(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(date.year, date.month, date.day);
+
+    final diffDays = target.difference(today).inDays;
+
+    if (diffDays == 0) return "heute";
+    if (diffDays == 1) return "morgen";
+    if (diffDays == -1) return "gestern";
+
+    if (diffDays > 1) return "in $diffDays Tagen";
+    if (diffDays <= 1) return "vor ${diffDays.abs()} Tagen";
+
+    return "-";
+  }
+
+  String activityRelativeTimeOnlyDays(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(date.year, date.month, date.day);
+
+    final diffDays = target.difference(today).inDays;
+
+    if (diffDays == 0) return "heute";
+    if (diffDays == 1) return "in 1 Tag";
+
+    if (diffDays > 1) return "in $diffDays Tagen";
+    if (diffDays <= 1) return "vor ${diffDays.abs()} Tagen";
+
+    return "-";
   }
 
 }

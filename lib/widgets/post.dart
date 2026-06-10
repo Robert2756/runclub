@@ -12,8 +12,10 @@ import '../profile_page.dart';
 import '../participant_page.dart';
 import '../activity_page.dart';
 import 'post_placeholder.dart';
+import '../services/data_formatter.dart';
 
 final supabase = Supabase.instance.client;
+final dataFormatter = DataFormatter();
 
 class PostCard extends StatefulWidget {
   final Post post;
@@ -239,10 +241,23 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   void _openActivity() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ActivityPage(
-          postId: widget.post.id,
-          userDistance: widget.post.userdistance),
+      PageRouteBuilder(
+        pageBuilder: (_, animation, secondaryAnimation) {
+          return ActivityPage(
+            postId: widget.post.id,
+            userDistance: widget.post.userdistance,
+          );
+        },
+        transitionsBuilder: (_, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: Container(
+              color: Colors.black, // <- makes the transition feel dark
+              child: child,
+            ),
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 250),
       ),
     );
   }
@@ -336,11 +351,19 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                             color: Colors.black.withOpacity(0.6),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(
-                            Icons.directions_run,
-                            color: Colors.white,
-                            size: 18,
-                          ),
+                          child: widget.post.activity == "Run"
+                            ? const Icon(
+                                Icons.directions_run,
+                                color: Colors.white,
+                                size: 18,
+                              )
+                            : widget.post.activity == "Bike"
+                              ? const Icon(
+                                Icons.directions_bike,
+                                color: Colors.white,
+                                size: 18,
+                                )
+                              : null,   
                         ),
                       ]
                     ),
@@ -356,14 +379,10 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         Expanded(
                           child: Text(
                             ((widget.post.startsAt != null)
-                                    ? "${dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!))} $bullet ${dataFormatter.formatTime(DateTime.parse(widget.post.startsAt!))}" : "none"),
-                                //   : "none$bullet") +
-                                // (widget.post.town != null ? "${widget.post.town}" : "none") +
-                                // (widget.post.userdistance != null
-                                //     ? (widget.post.userdistance! >= 1000
-                                //         ? "$bullet${(widget.post.userdistance! / 1000).round()}\u00A0km"
-                                //         : "$bullet${widget.post.userdistance!.round()}\u00A0m")
-                                //     : "$bullet none"),
+                              ? dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!)) == "Heute" || dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!)) == "Morgen"
+                                ? "${dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!))} $bullet ${dataFormatter.formatTime(DateTime.parse(widget.post.startsAt!))}"
+                                : "${dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!))} $bullet ${dataFormatter.activityRelativeTime(DateTime.parse(widget.post.startsAt!))}"
+                              : "none"),
                             style: TextStyle(
                               fontSize: 15,
                               color: Colors.grey[700],

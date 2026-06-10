@@ -90,7 +90,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     'https://i.pravatar.cc/40?img=7',
     'https://i.pravatar.cc/40?img=8',
     'https://i.pravatar.cc/40?img=9',
-    'https://i.pravatar.cc/40?img=10'];
+    'https://i.pravatar.cc/40?img=10',
+    'https://i.pravatar.cc/40?img=10',];
   String? _avatarUrl;
   String? _profileName;
   final dataFormatter = DataFormatter();
@@ -333,6 +334,13 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
             'last_read_at': null,
             'status': "joined"
           });
+          await supabase.from('notifications').insert({
+            'from_user': userId,
+            'to_user': post!.creatorId,
+            'post_id': post!.id,
+            'created_at': DateTime.now().toIso8601String(),
+            'type': 'join'
+          });
           setState(() {
             _joined = true;
             participants.add(userId);
@@ -413,6 +421,10 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       CurvedAnimation(parent: _modeController, curve: Curves.easeOut),
     );
 
+  }
+
+  _addToCalendar() {
+    return 0;
   }
 
   Widget _buildLocationHeader() {
@@ -626,201 +638,119 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   Widget _buildLocationCard() {
     final locked = !_canSeeExactLocation;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
 
-          // =========================
-          // HEADER (same system as others)
-          // =========================
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200)
-                  ),
-                  child: const Icon(
-                    Icons.place_outlined,
-                    color: Colors.black,
-                    size: 14,
-                  ),
-                ),
-                const SizedBox(width: 12),
+          // HEADER (light, no container)
+          Row(
+            children: [
+              const Icon(Icons.place_outlined, size: 18),
+              const SizedBox(width: 8),
 
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Treffpunkt",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        locked
-                            ? "Wird nach Beitritt freigeschaltet"
-                            : "Exakter Standort sichtbar",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
+              const Text(
+                "Treffpunkt",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.4,
                 ),
-              ],
-            ),
+              ),
+
+              const Spacer(),
+
+              Text(
+                locked ? "gesperrt" : "sichtbar",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ],
           ),
 
-          // =========================
-          // MAP
-          // =========================
-          SizedBox(
-            height: 220,
-            child: Stack(
-              children: [
+          const SizedBox(height: 10),
 
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(
-                    bottom: Radius.circular(12),
-                  ),
-                  child: _buildMap(
-                    initialZoom: locked ? 11 : 14,
-                    showMarker: true,
-                  ),
-                ),
+          // MAP PREVIEW (no card, just rounded clip)
+          GestureDetector(
+            onTap: locked
+                ? null
+                : () => openInMaps(post!.latitude!, post!.longitude!),
+            child: AspectRatio(
+              aspectRatio: 1 ,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: SizedBox(
 
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.45),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // TOP RIGHT BUTTON
-                Positioned(
-                  top: 14,
-                  right: 14,
-                  child: GestureDetector(
-                    onTap: locked
-                        ? null
-                        : () => openInMaps(
-                              post!.latitude!,
-                              post!.longitude!,
-                            ),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: locked
-                            ? Colors.black.withOpacity(0.25)
-                            : Colors.white.withOpacity(0.95),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.navigation_outlined,
-                            size: 16,
-                            color: locked ? Colors.white : Colors.black,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            "Maps",
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: locked ? Colors.white : Colors.black,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // BOTTOM TEXT
-                Positioned(
-                  left: 18,
-                  right: 18,
-                  bottom: 16,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  height: 180,
+                  child: Stack(
                     children: [
-                      Text(
-                        post!.town ?? "Location",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5,
+                      _buildMap(
+                        initialZoom: locked ? 11 : 14,
+                        showMarker: true,
+                      ),
+
+                      // soft gradient only for readability
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                Colors.black.withOpacity(0.35),
+                                Colors.transparent,
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        locked
-                          ? "Join to unlock meetup point"
-                          : (post!.userdistance != null
-                            ? (post!.userdistance! >= 1000
-                                ? "${(post!.userdistance! / 1000).round()}\u00A0km entfernt"
-                                : "${post!.userdistance!.round()}\u00A0m entfernt")
-                            : "none"),
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
+
+                      // bottom text only (no heavy overlay UI)
+                      Positioned(
+                        left: 12,
+                        right: 12,
+                        bottom: 10,
+                        child: Text(
+                          locked
+                              ? "Wird nach Beitritt freigeschaltet"
+                              : (() {
+                                  final town = post!.town ?? "Unbekannter Ort";
+
+                                  final distance = post!.userdistance != null
+                                      ? (post!.userdistance! >= 1000
+                                          ? "${(post!.userdistance! / 1000).round()} km entfernt"
+                                          : "${post!.userdistance!.round()} m entfernt")
+                                      : null;
+
+                                  return distance != null ? "$town · $distance" : town;
+                                })(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _thinSeparator() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Container(
+        height: 1,
+        color: Colors.black.withOpacity(0.06),
       ),
     );
   }
@@ -895,10 +825,16 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
               _buildHeader(),
               _buildDescription(),
               const SizedBox(height: 20),
+              _thinSeparator(),
+              const SizedBox(height: 20),
               _buildQuickStats(),
-              const SizedBox(height: 14),
+              const SizedBox(height: 20),
+              _thinSeparator(),
+              const SizedBox(height: 20),
               _buildParticipantsCard(),
-              const SizedBox(height: 14),
+              const SizedBox(height: 20),
+              _thinSeparator(),
+              const SizedBox(height: 20),
               if (post!.latitude != null && post!.longitude != null)
                 // const SizedBox(height: 12),
                 _buildLocationCard()
@@ -1256,7 +1192,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                       width: double.infinity,
                       child: Material(
                       color: (_loadingJoin || _requested)
-                          ? const Color(0xFFE8F5EE)
+                          ? Colors.grey.shade300
                           : _joined
                               ? Colors.grey.shade300
                               : Colors.black,
@@ -1290,7 +1226,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                                       fontSize: 15,
                                       fontWeight: FontWeight.w600,
                                       color: _joined
-                                          ? const Color(0xFF16A34A)
+                                          // ? const Color(0xFF16A34A)
+                                          ? Colors.white
                                           : Colors.white,
                                     ),
                                   ),
@@ -1379,7 +1316,9 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                         ),
                       ),
                       Text(
-                      formatPostAge(post!.createdAt),
+                        post!.activity == "Run" 
+                        ? "Lauf ${dataFormatter.activityRelativeTimeOnlyDays(DateTime.parse(post!.startsAt!))}"
+                        : "Radfahrt ${dataFormatter.activityRelativeTimeOnlyDays(DateTime.parse(post!.startsAt!))}",
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey[700],
@@ -1390,14 +1329,26 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                   ),
                 ),
 
-                if ({
-                  "Run": Icons.directions_run,
-                  "Bike": Icons.directions_bike,
-                }.containsKey(post!.activity))
-                  _activityIcon({
-                    "Run": Icons.directions_run,
-                    "Bike": Icons.directions_bike,
-                  }[post!.activity]!),
+                GestureDetector(
+                  onTap: _addToCalendar,
+                  child: Text(
+                    "Kalender hinzufügen",
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: const Color.fromARGB(255, 179, 179, 179),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+
+                // if ({
+                //   "Run": Icons.directions_run,
+                //   "Bike": Icons.directions_bike,
+                // }.containsKey(post!.activity))
+                //   _activityIcon({
+                //     "Run": Icons.directions_run,
+                //     "Bike": Icons.directions_bike,
+                //   }[post!.activity]!),
               ],
             ),
           ),
@@ -1423,7 +1374,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
             ? dataFormatter.formatPace(post.pace!)
             : "-",
       ),
-
       "Bike": ActivityConfig(
         statLabel: "Speed",
         statValue: (post) => post.speed != null
@@ -1431,49 +1381,20 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
             : "-",
       ),
     };
+
     final config = activityConfigs[post!.activity];
-    return Container(
-      padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(26),
 
-          border: Border.all(
-            color: Colors.grey.shade200,
-          ),
-
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // HEADER
+          // header (no container)
           Row(
-            children: [
-
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200)
-                ),
-                child: const Icon(
-                  Icons.insights_outlined,
-                  color: Colors.black,
-                  size: 14,
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              const Text(
+            children: const [
+              Icon(Icons.insights_outlined, size: 18),
+              SizedBox(width: 8),
+              Text(
                 "Aktivitätsdetails",
                 style: TextStyle(
                   fontSize: 18,
@@ -1483,35 +1404,40 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
               ),
             ],
           ),
+
           const SizedBox(height: 14),
-                    Row(
+
+          // stats grid
+          Row(
             children: [
               Expanded(
-                child: _stat(
-                  "Tag",
-                  (post!.startsAt != null)
-                      ? dataFormatter.formatActivityDate(DateTime.parse(post!.startsAt!))
+                child: _stat("Tag",
+                  post!.startsAt != null
+                      ? dataFormatter.formatActivityDate(
+                          DateTime.parse(post!.startsAt!))
                       : "-",
-                )
+                ),
               ),
               Expanded(
-                child: _stat(
-                  "Uhrzeit",
-                  (post!.startsAt != null)
-                      ? "${dataFormatter.formatTime(DateTime.parse(post!.startsAt!))}Uhr"
+                child: _stat("Zeit",
+                  post!.startsAt != null
+                      ? "${dataFormatter.formatTime(
+                          DateTime.parse(post!.startsAt!))} Uhr"
                       : "—",
                 ),
               ),
             ],
           ),
+
           const SizedBox(height: 16),
+
           Row(
             children: [
               Expanded(
                 child: _stat(
                   "Distanz",
                   post!.distance != null
-                      ? dataFormatter.formatDistance(post!.distance!)
+                      ? "${dataFormatter.formatDistance(post!.distance!)} km"
                       : "-",
                 ),
               ),
@@ -1521,7 +1447,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                   config?.statValue(post!) ?? "-",
                 ),
               ),
-            ]
+            ],
           ),
         ],
       ),
@@ -1578,146 +1504,105 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   Widget _buildParticipantsCard() {
     final hasParticipants = participantAvatars.isNotEmpty;
 
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ParticipantsPage(postId: post!.id),
-          ),
-        );
-      },
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: Colors.grey.shade200),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    final visible = participantAvatars.take(5).toList();
+    // final remaining = (count + 6) - visible.length;
+    const double overlap = 22;
 
-            // =========================
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ParticipantsPage(postId: post!.id),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             // HEADER
-            // =========================
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ParticipantsPage(postId: post!.id),
+                  ),
+                );
+              },
+              child: Row(
+                children: [
+                  const Icon(Icons.people, size: 18),
+                  const SizedBox(width: 8),
+
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Wer dabei ist",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.grey.shade400,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // AVATARS
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: const Icon(
-                    Icons.people,
-                    color: Colors.black,
-                    size: 14,
+                Expanded(
+                  child: Text(
+                    count == 0
+                        ? "Noch niemand dabei"
+                        : "$count ${count == 1 ? "Person" : "Personen"}",
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
 
-                const SizedBox(width: 10),
-
-                // 👇 IMPORTANT: Flexible instead of Expanded
-                Flexible(
-                  fit: FlexFit.loose,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        "Wer dabei ist",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.4,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        count == 0
-                            ? "Noch niemand dabei"
-                            : "$count ${count == 1 ? "Person" : "Personen"}",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(width: 35),
-
-                // 👇 AVATARS (fixed width, no competition with text)
                 if (hasParticipants)
                   SizedBox(
-                    width: 120, // 👈 KEY FIX: reserve space explicitly
-                    height: 32,
+                    width: 120, // IMPORTANT: reserve space
+                    height: 36,
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        for (int i = 0; i < participantAvatars.take(5).length; i++)
+                        for (int i = 0; i < visible.length; i++)
                           Positioned(
-                            left: i * 18,
+                            left: i * overlap,
                             child: CircleAvatar(
-                              radius: 14,
-                              backgroundImage: NetworkImage(participantAvatars[i]),
-                            ),
-                          ),
-
-                        if (count > 5)
-                          Positioned(
-                            left: 5 * 18,
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              decoration: const BoxDecoration(
-                                color: Colors.black,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  "+${count - 5}",
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ),
+                              radius: 16,
+                              backgroundImage: NetworkImage(visible[i]),
                             ),
                           ),
                       ],
                     ),
-                  )
-                else
-                  const SizedBox(width: 120),
-
-                const SizedBox(width: 6),
-
-                Icon(
-                  Icons.chevron_right,
-                  color: Colors.grey.shade400,
-                ),
+                  ),
               ],
-            ),
+            )
           ],
-        ),
+        )
       ),
     );
   }

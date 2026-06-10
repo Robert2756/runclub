@@ -3,6 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 
 class AppAppearance {
   static ThemeData lightTheme = ThemeData(
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: Colors.black,
+    ),
     useMaterial3: true,
     // textTheme: GoogleFonts.sourceSans3TextTheme(),
     // textTheme: GoogleFonts.notoSansTextTheme(),

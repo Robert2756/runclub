@@ -281,6 +281,13 @@ class _ActivityChatState extends State<ActivityChat> {
           'last_read_at': null,
           'status': "joined" ,
         });
+        await supabase.from('notifications').insert({
+          'from_user': userId,
+          'to_user': widget.post!.creatorId,
+          'post_id': widget.post!.id,
+          'created_at': DateTime.now().toIso8601String(),
+          'type': 'join'
+        });
 
         setState(() {
           _joined = true;
@@ -454,29 +461,26 @@ class _ActivityChatState extends State<ActivityChat> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(color: Colors.grey.shade200),
-          ),
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: Colors.grey.shade300),
         ),
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         child: Row(
           children: [
-            // IconButton(
-            //   icon: const Icon(Icons.add_circle_outline),
-            //   onPressed: () {
-            //     // later: quick actions
-            //   },
-            // ),
             Expanded(
               child: TextField(
                 controller: _inputController,
                 decoration: const InputDecoration(
-                  hintText: "Write something useful…",
+                  hintText: "Nachricht an alle Teilnehmer...",
                   border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 6),
                 ),
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.send),
+              icon: const Icon(Icons.send, color: Colors.black),
               onPressed: _sendMessage,
             ),
           ],
