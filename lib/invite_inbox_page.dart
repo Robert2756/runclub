@@ -36,21 +36,69 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
   Future<void> fetchNotifications() async {
     final userId = supabase.auth.currentUser!.id;
 
-    final res = await supabase
-        .from('notifications')
-        .select('''
-          *,
-          posts(*),
-          profiles!notifications_from_user_fkey(
-            username,
-            avatar_url
-          )
-        ''')
-        .eq('to_user', userId)
-        .order('created_at', ascending: false);
+    final results = await Future.wait([
+      supabase
+          .from('notifications')
+          .select('''
+            *,
+            posts!inner(*),
+            profiles!notifications_from_user_fkey(
+              username,
+              avatar_url
+            )
+          ''')
+          .eq('to_user', userId)
+          .gt('posts.starts_at', DateTime.now().toIso8601String()),
+      supabase.rpc('get_unread_chat_notifications'),
+    ]);
+
+    final normalNotifications =
+        List<Map<String, dynamic>>.from(results[0] as List); // {id: x, from_user: x, to_user: x, post_id: x, created_at, type: x, is_seen: x, posts: {}, profiles: {}}
+    
+    final normalNotificationsNorm = normalNotifications.map((n) {
+      return {
+        'type': n['type'],
+        'id': n['id'],
+        'post_id': n['post_id'],
+        'from_user': n['from_user'],
+        'title': n['posts']?['title'],
+        'username': n['posts']?['username'],
+        'starts_at': n['posts']?['starts_at'],
+        'town': n['posts']?['town'],
+        'avatar_url': n['profiles']?['avatar_url'],
+        'is_seen': n['is_seen'],
+        'created_at': n['created_at'],
+      };
+    }).toList();
+    debugPrint("Normal notifications: $normalNotificationsNorm");
+
+    final chatNotifications =
+        List<Map<String, dynamic>>.from(results[1] as List); // {post_id: x, unread_count: x, latest_message: timestamptz}
+
+    final chatNotificationsNorm = chatNotifications.map((c) {
+      return {
+        'type': 'chat',
+        'post_id': c['post_id'],  // fetch complete post instead of post_id
+        'title': c['title'],
+        'image_url': c['image_url'],
+        'unread_count': c['unread_count'],
+        'created_at': c['latest_message'],
+      };
+    }).toList();
+    debugPrint("Chat notifications: $chatNotificationsNorm");
+
+    // merge both into one notification scheme
+    final merged = [...normalNotificationsNorm, ...chatNotificationsNorm];
+
+    merged.sort((a, b) {
+      final aTime = DateTime.parse(a['created_at']);
+      final bTime = DateTime.parse(b['created_at']);
+      return bTime.compareTo(aTime);
+    });
+    debugPrint("Notifications: $merged");
 
     setState(() {
-      notifications = List<Map<String, dynamic>>.from(res);
+      notifications = List<Map<String, dynamic>>.from(merged);
       loadStatesAccepts =
           List.filled(notifications.length, false);
       loadStatesDeletes =
@@ -81,6 +129,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     final user = supabase.auth.currentUser!.id;
     debugPrint("User: $user");
     debugPrint("to_user: ${request['to_user']}");
+    debugPrint("Notification accepted: $request");
     // accept request
     try {
       await supabase
@@ -145,18 +194,25 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     }
   }
 
-  void _openActivity(Map<String, dynamic> invite) {
+  void _openActivity (Map<String, dynamic> notification) async {
     Navigator.pop(context);
 
-    Navigator.push(
+    final changed = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ActivityPage(
-          postId: invite['posts']['id'],
+          postId: notification['post_id'],
           userDistance: null,
         ),
       ),
     );
+
+    // fetch new notification if coming back
+    fetchNotifications();
+
+    if (changed == true) {
+      Navigator.pop(context, true); // bubble upward
+    }
   }
 
   String _groupLabel(DateTime createdAt) {
@@ -222,8 +278,8 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
   Widget _buildInviteCard(
     Map<String, dynamic> notification,
   ) {
-    final post = notification['posts'];
-    final fromUser = notification['profiles'];
+    // final post = notification['posts'];
+    // final fromUser = notification['profiles'];
     final isNew = notification['is_seen'] == false;
 
     return Container(
@@ -244,10 +300,10 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
           /// AVATAR
           CircleAvatar(
             radius: 26,
-            backgroundImage: fromUser?['avatar_url'] != null
-                ? NetworkImage(fromUser['avatar_url'])
+            backgroundImage: notification['avatar_url'] != null
+                ? NetworkImage(notification['avatar_url'])
                 : null,
-            child: fromUser?['avatar_url'] == null
+            child: notification['avatar_url'] == null
                 ? const Icon(Icons.person, size: 16)
                 : null,
           ),
@@ -268,7 +324,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                     ),
                     children: [
                       TextSpan(
-                        text: fromUser?['username'] ?? 'Jemand',
+                        text: notification['username'] ?? 'Jemand',
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                         ),
@@ -296,8 +352,8 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
 
                 Text(
                   "Lauf • "
-                  "${dataFormatter.formatActivityDate(DateTime.parse(post['starts_at']))}"
-                  " • ${post['town']}",
+                  "${dataFormatter.formatActivityDate(DateTime.parse(notification['starts_at']))}"
+                  " • ${notification['town']}",
                   // "${post['starts_at'] != null
                   //     ? dataFormatter.formatActivityDate(
                   //         DateTime.parse(post['starts_at'])
@@ -375,8 +431,8 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     int index,
   ) {
     debugPrint("Request notification: $notification");
-    final post = notification['posts'];
-    final user = notification['profiles'];
+    // final post = notification['posts'];
+    // final user = notification['profiles'];
     final isNew = notification['is_seen'] == false;
     final postId = notification['post_id'];
     final fromUserId = notification['from_user'];
@@ -407,10 +463,10 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
             },
             child: CircleAvatar(
               radius: 26,
-              backgroundImage: user?['avatar_url'] != null
-                  ? NetworkImage(user['avatar_url'])
+              backgroundImage: notification['avatar_url'] != null
+                  ? NetworkImage(notification['avatar_url'])
                   : null,
-              child: user?['avatar_url'] == null
+              child: notification['avatar_url'] == null
                   ? const Icon(Icons.person, size: 16)
                   : null,
             ),
@@ -433,7 +489,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                     ),
                     children: [
                       TextSpan(
-                        text: user?['username'] ?? 'Jemand',
+                        text: notification['username'] ?? 'Jemand',
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const TextSpan(text: " möchte teilnehmen"),
@@ -460,7 +516,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                           );
                         },
                         child: Text(
-                          post['title'] ?? '',
+                          notification['title'] ?? '',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           softWrap: false,
@@ -573,8 +629,8 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
   Widget _buildJoinedCard(
     Map<String, dynamic> notification,
   ) {
-    final post = notification['posts'];
-    final user = notification['profiles'];
+    // final post = notification['posts'];
+    // final user = notification['profiles'];
     final isNew = notification['is_seen'] == false;
 
     return Container(
@@ -590,10 +646,10 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
           /// AVATAR
           CircleAvatar(
             radius: 26,
-            backgroundImage: user?['avatar_url'] != null
-                ? NetworkImage(user['avatar_url'])
+            backgroundImage: notification['avatar_url'] != null
+                ? NetworkImage(notification['avatar_url'])
                 : null,
-            child: user?['avatar_url'] == null
+            child: notification['avatar_url'] == null
                 ? const Icon(Icons.person, size: 16)
                 : null,
           ),
@@ -615,7 +671,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                     ),
                     children: [
                       TextSpan(
-                        text: user?['username'] ?? 'Jemand',
+                        text: notification['username'] ?? 'Jemand',
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const TextSpan(text: " ist beigetreten"),
@@ -627,7 +683,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
 
                 /// LINE 2
                 Text(
-                  post['title'] ?? '',
+                  notification['title'] ?? '',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -660,9 +716,11 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
   }
 
   Widget _buildMessageCard(Map<String, dynamic> notification) {
-    final post = notification['posts'];
-    final user = notification['profiles'];
-    final isNew = notification['is_seen'] == false;
+    final title = notification['title'] ?? 'Aktivität';
+    final imageUrl = notification['image_url'];
+
+    final unreadCount = notification['unread_count'] ?? 0;
+    final isNew = unreadCount > 0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
@@ -671,69 +729,69 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         color: isNew ? Colors.blue.withOpacity(0.04) : Colors.transparent,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundImage: user?['avatar_url'] != null
-                ? NetworkImage(user['avatar_url'])
-                : null,
-            child: user?['avatar_url'] == null
-                ? const Icon(Icons.person, size: 16)
-                : null,
+
+          /// RECT IMAGE (KEY ELEMENT)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: 56,
+              height: 56,
+              color: Colors.grey.shade200,
+              child: imageUrl != null
+                  ? Image.network(
+                      imageUrl,
+                      fit: BoxFit.cover,
+                    )
+                  : const Icon(
+                      Icons.chat_bubble_outline,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
+            ),
           ),
 
           const SizedBox(width: 12),
 
+          /// TEXT
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                RichText(
-                  text: TextSpan(
-                    style: const TextStyle(
-                      color: Colors.black87,
-                      fontSize: 13.5,
-                    ),
-                    children: [
-                      TextSpan(
-                        text: user?['username'] ?? 'Jemand',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const TextSpan(text: " hat eine Nachricht gesendet"),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 2),
 
                 Text(
-                  post?['title'] != null
-                      ? "in ${post['title']}"
-                      : "in einer Aktivität",
-                  maxLines: 1,
+                  unreadCount == 1
+                      ? "1 ungelesene Nachricht in $title"
+                      : "$unreadCount ungelesene Nachrichten in $title",
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.black54,
+                    fontSize: 13.5,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
+
+                const SizedBox(height: 3),
+
+                // Text(
+                //   "Letzte Aktivität",
+                //   style: TextStyle(
+                //     fontSize: 12,
+                //     color: Colors.grey.shade600,
+                //   ),
+                // ),
               ],
             ),
           ),
 
           const SizedBox(width: 8),
 
+          /// ACTION
           InkWell(
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ActivityPage(
-                    postId: post['id'],
-                    userDistance: null,
-                  ),
-                ),
-              );
+              _openActivity(notification);
             },
             borderRadius: BorderRadius.circular(12),
             child: Container(
@@ -774,7 +832,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
       case 'join':
         return _buildJoinedCard(notification);
       
-      case 'message':
+      case 'chat':
         return _buildMessageCard(notification);
 
       // case 'participant_left':

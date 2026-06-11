@@ -351,7 +351,8 @@ class FeedPageState extends State<FeedPage> {
         supabase
             .from('activity_participants')
             .select('user_id')
-            .eq('post_id', post['id']) as Future<dynamic>
+            .eq('post_id', post['id']) 
+            .eq('status', 'joined') as Future<dynamic>
       ]);
 
       // add to post

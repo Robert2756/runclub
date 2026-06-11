@@ -34,22 +34,36 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     fetchNotificationCount();
 
     final userId = supabase.auth.currentUser!.id;
+
     _notificationChannel = supabase
-      .channel('notifications-$userId')
-      .onPostgresChanges(
-        event: PostgresChangeEvent.insert,
-        schema: 'public',
-        table: 'notifications',
-        filter: PostgresChangeFilter(
-          type: PostgresChangeFilterType.eq,
-          column: 'to_user',
-          value: userId,
-        ),
-        callback: (payload) {
-          fetchNotificationCount();
-        },
-      )
-      .subscribe();
+        .channel('notifications-$userId')
+
+        // social notifications
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'to_user',
+            value: userId,
+          ),
+          callback: (payload) {
+            fetchNotificationCount();
+          },
+        )
+
+        // chat messages
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'activity_participants',
+          callback: (_) {
+            fetchNotificationCount();
+          },
+        )
+
+        .subscribe();
 
     pages = [
       FeedPage(key: _feedKey, title: "Feed"),
@@ -92,20 +106,15 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
   // fetch number of notifications (invitations or requests)
   Future<void> fetchNotificationCount() async {
+    debugPrint("Fetch notification count!");
     try {
-      final userId = supabase.auth.currentUser!.id;
-
-      final response = await supabase
-          .from('notifications')
-          .select('id')
-          .eq('to_user', userId)
-          .eq('is_seen', false);
+      final res = await supabase.rpc('get_total_unread_notifications');
 
       setState(() {
-        _notificationCount = response.length;
+        _notificationCount = (res as num?)?.toInt() ?? 0;
       });
     } catch (e) {
-      debugPrint('Error fetching notification count: $e');
+      debugPrint('Error fetching unified notification count: $e');
     }
   }
 
@@ -172,19 +181,19 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                   .eq('is_seen', false);
               if (!mounted) return;
 
-              showModalBottomSheet(
+              final changed = await showModalBottomSheet(
                 context: context,
                 isScrollControlled: true,
                 backgroundColor: Colors.white,
                 shape: const RoundedRectangleBorder(
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
-                builder: (_) => InviteInboxSheet(
-                  onMarkedSeen: () async {
-                    await fetchNotificationCount();
-                  },
-                ),
+                builder: (_) => InviteInboxSheet(),
               );
+
+              if (changed == true) {
+                fetchNotificationCount();
+              }
             },
           ),
           IconButton(

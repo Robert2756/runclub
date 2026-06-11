@@ -1636,7 +1636,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
   Widget _buildBackButton() {
     return GestureDetector(
-      onTap: () => Navigator.pop(context),
+      onTap: () => Navigator.pop(context, true),
       child: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
