@@ -12,6 +12,7 @@ import 'services/data_formatter.dart';
 import 'participant_page.dart';
 import 'widgets/chat.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'chat_page.dart';
 final supabase = Supabase.instance.client;
 
 enum ActivityMode {
@@ -82,7 +83,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   bool _joined = false;
   bool _requested = false;
   bool _loadingJoin = false;
-  bool _mapPrimary = false;
   bool get _canSeeExactLocation => _joined;
   List<String> participantAvatars = [];
   // List<String> debugParticipants = [
@@ -98,19 +98,13 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   final dataFormatter = DataFormatter();
   final bullet = " •\u200B ";
   ActivityMode _mode = ActivityMode.details;
-  static ActivityMode _lastMode = ActivityMode.details;
   final DraggableScrollableController _sheetController =
     DraggableScrollableController();
   
-  late final AnimationController _modeController;
-  late final Animation<double> _chatOpacity;
-  late final Animation<Offset> _chatSlide;
-  bool get _isChat => _mode == ActivityMode.chat;
   int get count => participants.length;
   int? unreadCounter;
   Key _chatKey = UniqueKey(); // if key changes -> build ActivityChat new (as it is passed as key)
   Key _detailsKey = UniqueKey();
-  bool get _isChatActive => _mode == ActivityMode.chat;
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/backdrop/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
@@ -205,6 +199,26 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     });
 
     // count unread messages from user for this activity
+    await _calculateUnread();
+  }
+
+  Future<void> _reloadJoinState() async {
+    final userId = supabase.auth.currentUser!.id;
+
+    final res = await supabase
+        .from('activity_participants')
+        .select('status')
+        .eq('post_id', widget.postId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    final status = res?['status'];
+
+    setState(() {
+      _joined = status == "joined";
+      _requested = status == "requested";
+    });
+
     await _calculateUnread();
   }
 
@@ -480,7 +494,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
   @override
   void dispose() {
-    _modeController.dispose();
     super.dispose();
   }
 
@@ -490,77 +503,10 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     loadActivity();
     _mode = ActivityMode.details;
 
-    _modeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    );
-
-    _chatOpacity = CurvedAnimation(
-      parent: _modeController,
-      curve: Curves.easeOut,
-    );
-
-    _chatSlide = Tween<Offset>(
-      begin: const Offset(0, 0.05),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _modeController, curve: Curves.easeOut),
-    );
-
   }
 
   _addToCalendar() {
     return 0;
-  }
-
-  Widget _buildLocationHeader() {
-    final isUnlocked = _canSeeExactLocation;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-
-        // TITLE ROW
-        Row(
-          children: [
-            const Icon(
-              Icons.location_on_outlined,
-              size: 18,
-              color: Colors.grey,
-            ),
-            const SizedBox(width: 6),
-
-            Expanded(
-              child: Text(
-                isUnlocked
-                    ? (post!.town ?? "Standort")
-                    : "Standort wird nach Beitritt freigeschaltet",
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: isUnlocked ? Colors.black : Colors.grey.shade600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 4),
-
-        // SECONDARY INFO
-        Text(
-          isUnlocked
-              ? "Exakter Treffpunkt sichtbar"
-              : "Grobe Region sichtbar",
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey.shade600,
-          ),
-        ),
-      ],
-    );
   }
 
   Widget _buildMap({double initialZoom = 13, bool showMarker = true}) {
@@ -663,62 +609,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     }
-  }
-
-  Widget _blurredLocationField() {
-    return Container(
-      width: 140,
-      height: 140,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [
-            Colors.blue.withOpacity(0.25),
-            Colors.blue.withOpacity(0.05),
-            Colors.transparent,
-          ],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.blue.withOpacity(0.2),
-            blurRadius: 40,
-            spreadRadius: 15,
-          ),
-        ],
-      ),
-      child: const Center(
-        child: Icon(
-          Icons.blur_on,
-          color: Colors.white70,
-          size: 18,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBlurredLocationMarker() {
-    return Container(
-      width: 90,
-      height: 90,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: Colors.blue.withOpacity(0.15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.blue.withOpacity(0.25),
-            blurRadius: 30,
-            spreadRadius: 10,
-          ),
-        ],
-      ),
-      child: const Center(
-        child: Icon(
-          Icons.location_on_outlined,
-          color: Colors.white,
-          size: 18,
-        ),
-      ),
-    );
   }
 
   Widget _buildLocationCard() {
@@ -849,61 +739,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     );
   }
 
-  Widget _sectionHeader({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-
-          Row(
-            children: [
-              Icon(
-                icon,
-                size: 18,
-                color: Colors.black,
-              ),
-
-              const SizedBox(width: 8),
-
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.4,
-                ),
-              ),
-            ],
-          ),
-
-          if (subtitle != null) ...[
-            // const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.only(left: 26),
-              child: Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade600,
-                  height: 1.3,
-                ),
-              ),
-            ),
-          ]
-        ],
-      ),
-    );
-  }
-
   Widget _buildDetails(ScrollController controller) {
-    final sheetT = (_sheetController.isAttached
-      ? _sheetController.size
-      : 0.60);
     return CustomScrollView(
       controller: controller,
       slivers: [
@@ -964,27 +800,33 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
     return GestureDetector(
       onTap: () async {
-
         final wasChat = _mode == ActivityMode.chat;
         final goingToChat = target == ActivityMode.chat;
 
-        setState(() {
-          _mode = target;
-          _lastMode = target;
-        });
-
-        if (goingToChat && !wasChat) {
-          _modeController.forward();
+        if (goingToChat) {
           if (_joined) await markChatAsRead();
-        } else {
-          _modeController.reverse();
+
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ActivityChatPage(
+                post: post!,
+                initialJoined: _joined,
+                initialRequested: _requested,
+              ),
+            ),
+          );
+
+          if (mounted) {
+            await _reloadJoinState();
+          }
+
+          return; // IMPORTANT: stop mode switching
         }
 
-        _sheetController.animateTo(
-          target == ActivityMode.chat ? 0.88 : 0.60,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOutCubic,
-        );
+        setState(() {
+          _mode = target;
+        });
       },
       child: Stack(
         clipBehavior: Clip.none,
@@ -1093,146 +935,19 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
           _sheetHandle(),
           _modeSwitch(),
           const SizedBox(height: 8),
-
           Expanded(
             child: Stack(
               children: [
-                // -----------------------
-                // DETAILS LAYER
-                // -----------------------
-                IgnorePointer(
-                  ignoring: _isChat,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 200),
-                    opacity: _isChat ? 0 : 1,
-                    child: Transform.translate(
-                      offset: Offset(0, _isChat ? -10 : 0),
-                      child: _buildDetails(controller),
-                    ),
-                  ),
-                ),
-
-                // -----------------------
-                // CHAT LAYER
-                // -----------------------
-                IgnorePointer(
-                  ignoring: !_isChat,
-                  child: SlideTransition(
-                    position: _chatSlide,
-                    child: FadeTransition(
-                      opacity: _chatOpacity,
-                      child: ActivityChat(
-                        key: _chatKey, 
-                        initialJoined: _joined,
-                        initialRequested: _requested,
-                        onJoinChanged: (v) async {
-                          setState(() => _joined = v);
-                          await fetchParticipantAvatars();
-                          setState(() {
-                            _chatKey = UniqueKey();
-                          });
-                        },
-                        onRequestedChanged: (v) async {
-                          setState(() {
-                            _requested = v;
-                            _chatKey = UniqueKey();
-                          });
-                        },
-                        isActive: _isChatActive,
-                        onActiveRead: markChatAsRead,
-                        markUnread: markChatAsRead,
-                        joinMode: post!.joinMode,
-                        post: post,
-                      )
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+                _buildDetails(controller),
+              ]
+            )
+          )
         ],
       ),
     );
   }
 
-  Future<void> _animateWhenReady(double target, {bool animate = true}) async {
-    debugPrint("🟣 ANIMATE REQUESTED | attached=${_sheetController.isAttached}");
-    debugPrint("🎯 target=$target animate=$animate");
-    int attempts = 0;
-    while (!_sheetController.isAttached) {
-      attempts++;
-      debugPrint("⏳ waiting for attachment... attempt $attempts");
-      await Future.delayed(const Duration(milliseconds: 16));
-    }
-
-    if (animate) {
-      _sheetController.animateTo(
-        target,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
-      debugPrint("✅ animation done");
-    } else {
-      _sheetController.jumpTo(target);
-    }
-  }
-
-  void _handleDragUpdate(DragUpdateDetails details) {
-    if (_mode != ActivityMode.details) return;
-    if (!_sheetController.isAttached) return;
-
-    final delta =
-        -details.primaryDelta! / MediaQuery.of(context).size.height;
-
-    final newSize = (_sheetController.size + delta).clamp(0.60, 0.88);
-
-    _sheetController.jumpTo(newSize);
-  }
-
-  void _handleDragEnd(DragEndDetails details) {
-    if (_mode != ActivityMode.details) return; // 🚨 IMPORTANT
-    if (!_sheetController.isAttached) return;
-
-    final velocity = details.primaryVelocity ?? 0;
-    final current = _sheetController.size;
-
-    double target;
-
-    if (velocity < -200) {
-      target = 0.88;
-    } else if (velocity > 200) {
-      target = 0.60;
-    } else {
-      target = (current - 0.60).abs() < (current - 0.88).abs()
-          ? 0.60
-          : 0.88;
-    }
-
-    _sheetController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  Widget _activityIcon(IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
-        shape: BoxShape.circle,
-      ),
-      child: Icon(
-        icon,
-        color: Colors.white,
-        size: 18,
-      ),
-    );
-  }
-
   Widget _buildFloatingJoinButton() {
-    if (_mode == ActivityMode.chat) return const SizedBox.shrink();
-
     return AnimatedBuilder(
       animation: _sheetController,
       builder: (context, _) {
@@ -1436,15 +1151,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                     ),
                   ),
                 ),
-
-                // if ({
-                //   "Run": Icons.directions_run,
-                //   "Bike": Icons.directions_bike,
-                // }.containsKey(post!.activity))
-                //   _activityIcon({
-                //     "Run": Icons.directions_run,
-                //     "Bike": Icons.directions_bike,
-                //   }[post!.activity]!),
               ],
             ),
           ),
@@ -1549,26 +1255,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       ),
     );
   }
-
-  // Widget _stat(String label, String value) {
-  //   return Column(
-  //     crossAxisAlignment: CrossAxisAlignment.start,
-  //     children: [
-  //       Text(
-  //         label,
-  //         style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-  //       ),
-  //       const SizedBox(height: 2),
-  //       Text(
-  //         value,
-  //         style: const TextStyle(
-  //           fontSize: 14,
-  //           fontWeight: FontWeight.w600,
-  //         ),
-  //       ),
-  //     ],
-  //   );
-  // }
 
   Widget _stat(String label, String value) {
     return Column(
@@ -1759,63 +1445,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildInputBar() {
-    final controller = TextEditingController();
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(color: Colors.black12),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              minLines: 1,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: "Message...",
-                border: InputBorder.none,
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.send),
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.isEmpty) return;
-
-              // TODO: send message logic
-              controller.clear();
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-
-    // final sheetSize = _sheetController.isAttached
-    //     ? _sheetController.size
-    //     : (_mode == ActivityMode.chat ? 0.88 : 0.60);
-
-    final sheetSize = _sheetController.isAttached
-      ? _sheetController.size
-      : 0.60; // always neutral baseline
-
-    final sheetHeight = screenHeight * sheetSize;
-    final sheetTopY = screenHeight - sheetHeight;
-
-    // final t = ((sheetSize - 0.60) / (0.88 - 0.60)).clamp(0.0, 1.0);
-    // final previewOpacity = 1.0 - t;
-
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: post == null
@@ -1824,52 +1455,14 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
               children: [
                 _buildHero(),
 
-                // // 👉 FLOATING PREVIEW LAYER (important)
-                // if (post!.latitude != null && post!.longitude != null)
-                //   Positioned(
-                //     top: sheetTopY - 95,
-                //     right: 16,
-                //     child: _mode == ActivityMode.chat
-                //         ? const SizedBox()
-                //         : SheetPreview(
-                //             controller: _sheetController,
-                //             child: GestureDetector(
-                //               onTap: () {
-                //                 setState(() {
-                //                   _mapPrimary = !_mapPrimary;
-                //                 });
-                //               },
-                //               child: Container(
-                //                 width: 80,
-                //                 height: 80,
-                //                 decoration: BoxDecoration(
-                //                   borderRadius: BorderRadius.circular(16),
-                //                   boxShadow: [
-                //                     BoxShadow(
-                //                       blurRadius: 12,
-                //                       color: Colors.black.withOpacity(0.25),
-                //                     ),
-                //                   ],
-                //                 ),
-                //                 child: ClipRRect(
-                //                   borderRadius: BorderRadius.circular(16),
-                //                   child: _mapPrimary
-                //                       ? _buildMap()
-                //                       : Image.network(post!.imgurl!),
-                //                 ),
-                //               ),
-                //             ),
-                //           ),
-                //   ),
-
                 DraggableScrollableSheet(
-                  // key: ValueKey(_mode),
+                  key: ValueKey(_mode),
                   controller: _sheetController,
-                  initialChildSize: _mode == ActivityMode.chat ? 0.88 : 0.60,
-                  minChildSize: _mode == ActivityMode.chat ? 0.88 : 0.60,
+                  initialChildSize: 0.60,
+                  minChildSize: 0.60,
                   maxChildSize: 0.88,
-                  // snap: true,
-                  // snapSizes: [0.60, 0.88],
+                  snap: true,
+                  snapSizes: [0.60, 0.88],
                   expand: true,
                   builder: (context, scrollController) {
                     return _buildContent(scrollController);
