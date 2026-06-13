@@ -31,12 +31,14 @@ class _ParticipantsPageState extends State<ParticipantsPage> {
 
   Future<Map<String, dynamic>> fetchData() async {
     final now = DateTime.now().toUtc().toIso8601String();
+    debugPrint("Fetch data");
     final post = await supabase
         .from('posts')
         .select('''
           creator_id,
           activity_participants(
             user_id,
+            status,
             profiles(
               id,
               username,
@@ -47,12 +49,16 @@ class _ParticipantsPageState extends State<ParticipantsPage> {
         .eq('id', widget.postId)
         .single();
 
-    final participants = post['activity_participants'] as List<dynamic>;
+    debugPrint("PARTICIPANTS: $post");
+    final participants =(post['activity_participants'] as List<dynamic>?) ?? [];
+    final joinedParticipants = participants
+    .where((p) => p['status'] == 'joined')
+    .toList();
     final currentUserId = supabase.auth.currentUser!.id;
 
     Map<String, dynamic> statsMap = {};
 
-    for (final participant in participants) {
+    for (final participant in joinedParticipants) {
       final userId = participant['user_id'];
 
       // skip yourself
@@ -78,7 +84,7 @@ class _ParticipantsPageState extends State<ParticipantsPage> {
 
     return {
       'creator_id': post['creator_id'],
-      'participants': participants,
+      'participants': joinedParticipants,
       'stats': statsMap,
     };
   }

@@ -85,13 +85,14 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   bool _mapPrimary = false;
   bool get _canSeeExactLocation => _joined;
   List<String> participantAvatars = [];
-  List<String> debugParticipants = [
-    'https://i.pravatar.cc/40?img=11',
-    'https://i.pravatar.cc/40?img=7',
-    'https://i.pravatar.cc/40?img=8',
-    'https://i.pravatar.cc/40?img=9',
-    'https://i.pravatar.cc/40?img=10',
-    'https://i.pravatar.cc/40?img=10',];
+  // List<String> debugParticipants = [
+  //   'https://i.pravatar.cc/40?img=11',
+  //   'https://i.pravatar.cc/40?img=7',
+  //   'https://i.pravatar.cc/40?img=8',
+  //   'https://i.pravatar.cc/40?img=9',
+  //   'https://i.pravatar.cc/40?img=10',
+  //   'https://i.pravatar.cc/40?img=10',];
+  List<String> debugParticipants = [];
   String? _avatarUrl;
   String? _profileName;
   final dataFormatter = DataFormatter();
@@ -150,6 +151,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
           .from('activity_participants')
           .select('user_id')
           .eq('post_id', loadedPost.id)
+          .eq('status', 'joined')
           .then((value) => value),
 
       supabase
@@ -960,8 +962,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     ActivityMode target) {
     final active = _mode == target;
 
-    debugPrint("UnreadMessages: $unreadCounter");
-
     return GestureDetector(
       onTap: () async {
 
@@ -1601,8 +1601,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     final hasParticipants = participantAvatars.isNotEmpty;
 
     final visible = participantAvatars.take(5).toList();
-    // final remaining = (count + 6) - visible.length;
-    const double overlap = 22;
+    final double overlap = 22;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -1677,24 +1676,38 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                   ),
                 ),
 
-                if (hasParticipants)
-                  SizedBox(
-                    width: 120, // IMPORTANT: reserve space
-                    height: 36,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
+                SizedBox(
+                  width: 120,
+                  height: 36,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      if (hasParticipants)
                         for (int i = 0; i < visible.length; i++)
                           Positioned(
-                            left: i * overlap,
+                            right: i * overlap,
                             child: CircleAvatar(
                               radius: 16,
                               backgroundImage: NetworkImage(visible[i]),
                             ),
+                          )
+                      else
+                        for (int i = 0; i < 3; i++)
+                          Positioned(
+                            right: i * overlap,
+                            child: CircleAvatar(
+                              radius: 16,
+                              backgroundColor: Colors.grey[300],
+                              child: Icon(
+                                Icons.person,
+                                size: 18,
+                                color: Colors.grey[500],
+                              ),
+                            ),
                           ),
-                      ],
-                    ),
+                    ],
                   ),
+                )
               ],
             )
           ],
@@ -1711,11 +1724,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // const Text(
-          //   "Beschreibung",
-          //   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-          // ),
-          // const SizedBox(height: 8),
 
           Text(
             post!.description!,
@@ -1751,6 +1759,45 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     );
   }
 
+  Widget _buildInputBar() {
+    final controller = TextEditingController();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: Colors.black12),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              minLines: 1,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: "Message...",
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.send),
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isEmpty) return;
+
+              // TODO: send message logic
+              controller.clear();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
@@ -1770,6 +1817,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     // final previewOpacity = 1.0 - t;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: post == null
           ? const Center(child: CircularProgressIndicator())
           : Stack(
@@ -1822,10 +1870,10 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                   maxChildSize: 0.88,
                   // snap: true,
                   // snapSizes: [0.60, 0.88],
-                  // expand: true,
+                  expand: true,
                   builder: (context, scrollController) {
                     return _buildContent(scrollController);
-                  },
+                  }
                 ),
 
                 _buildFloatingJoinButton(),

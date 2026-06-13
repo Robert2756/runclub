@@ -201,6 +201,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
             icon: _avatarUrl != null
               ? CircleAvatar(
                   radius: 16,
+                  backgroundColor: Colors.grey[300],
                   backgroundImage: NetworkImage(_avatarUrl!),
                 )
               : const Icon(Icons.person_outline),

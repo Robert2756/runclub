@@ -206,8 +206,8 @@ class _ActivityChatState extends State<ActivityChat> {
 
   void _subscribeRealtime() {
     if (!_joined || _requested) return;
+    if (_channel != null) return;
     _channel = supabase.channel('activity-${widget.post!.id}');
-
     _channel?.onPostgresChanges(
       event: PostgresChangeEvent.insert,
       schema: 'public',
@@ -220,13 +220,17 @@ class _ActivityChatState extends State<ActivityChat> {
       callback: (payload) async {
         final msg = Message.fromJson(payload.newRecord);
 
-        setState(() => _messages.insert(0, msg));
+        final alreadyExists = _messages.any((m) =>
+            m.id == msg.id ||
+            (m.content == msg.content &&
+            m.userId == msg.userId &&
+            (DateTime.now().difference(m.createdAt).inSeconds < 5))
+        );
 
-        // if currently viewing chat
-        if (widget.isActive && _joined) {
-          widget.onActiveRead?.call();
-        }
-      },
+        if (alreadyExists) return;
+
+        setState(() => _messages.insert(0, msg));
+      }
     ).subscribe();
   }
 
@@ -429,15 +433,18 @@ class _ActivityChatState extends State<ActivityChat> {
         Expanded(
           child: ListView.builder(
             // physics: const ClampingScrollPhysics(),
-            physics: const BouncingScrollPhysics(),
+            physics: const ClampingScrollPhysics(),
             reverse: true,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             itemCount: _messages.length,
-            itemBuilder: (_, i) => _buildMessage(_messages[i]),
+            itemBuilder: (_, i) => KeyedSubtree(
+              key: ValueKey(_messages[i].id),
+              child: _buildMessage(_messages[i]),
+            ),
           ),
         ),
 
-        _buildInput(),
+        Container(child: _buildInput())
       ],
     );
   }

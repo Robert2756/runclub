@@ -236,6 +236,7 @@ class _BasicSection extends StatelessWidget {
         /// 📝 TITLE
         TextField(
           controller: titleController,
+          maxLength: 80,
           decoration: InputDecoration(
             hintText: "z.B. Easy 5k Feierabendrunde",
             contentPadding: const EdgeInsets.all(12),
@@ -275,6 +276,7 @@ class _BasicSection extends StatelessWidget {
         TextField(
           controller: descriptionController,
           maxLines: 3,
+          maxLength: 500,
           decoration: InputDecoration(
             hintText: "Optional...",
             contentPadding: const EdgeInsets.all(12),
