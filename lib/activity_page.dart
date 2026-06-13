@@ -117,21 +117,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
 
-  // Future<void> checkJoined() async {
-  //   try {
-  //     final res = await supabase
-  //         .from('activity_participants')
-  //         .select('id')
-  //         .eq('post_id', post!.id)
-  //         .eq('user_id', supabase.auth.currentUser!.id)
-  //         .maybeSingle();
-
-  //     setState(() => _joined = res != null);
-  //   } catch (e) {
-  //     debugPrint('Error checking join status: $e');
-  //   }
-  // }
-
   Future<void> loadActivity() async {
     final response = await supabase
         .from('posts')
@@ -304,7 +289,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       final response = await supabase
           .from ('activity_participants')
           .select ('user_id')
-          .eq('post_id', post!.id); // filter for this post
+          .eq('post_id', post!.id) // filter for this post
+          .eq('status', 'joined');
 
       final List<String> userIds = (response as List)
           .map((row) => row['user_id'] as String)
@@ -315,6 +301,103 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     catch (e) {
       debugPrint('Error fetching participants: $e');
       return [];
+    }
+  }
+
+  Future<void> showLeaveWarning() async {
+    final leave = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.6),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Aktivität verlassen?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                Text(
+                  'Diese Aktion entfernt dich aus der Teilnehmerliste.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.3,
+                    color: Colors.black.withOpacity(0.65),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context, false),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'Abbrechen',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context, true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'Verlassen',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (leave == true) {
+      await toggleJoin();
     }
   }
 
@@ -332,7 +415,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
             'post_id': post!.id,
             'user_id': userId,
             'last_read_at': null,
-            'status': "joined"
+            'status': "joined",
+            'joined_at': DateTime.now().toIso8601String(),
           });
           await supabase.from('notifications').insert({
             'from_user': userId,
@@ -662,7 +746,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
               const Spacer(),
 
               Text(
-                locked ? "gesperrt" : "sichtbar",
+                locked ? "nicht sichtbar" : "sichtbar",
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey.shade500,
@@ -715,7 +799,15 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                         bottom: 10,
                         child: Text(
                           locked
-                              ? "Wird nach Beitritt freigeschaltet"
+                              ? (() {
+                                  final distance = post!.userdistance != null
+                                    ? (post!.userdistance! >= 1000
+                                        ? "${(post!.userdistance! / 1000).round()} km entfernt"
+                                        : "${post!.userdistance!.round()} m entfernt")
+                                    : null;
+
+                                  return distance != null ? "Sichtbar nach Beitritt · $distance" : "Sichtbar nach Beitritt";
+                                })()
                               : (() {
                                   final town = post!.town ?? "Unbekannter Ort";
 
@@ -1199,7 +1291,11 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                         borderRadius: BorderRadius.circular(26),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(26),
-                          onTap: (_loadingJoin || _requested) ? null : toggleJoin,
+                          onTap: (_loadingJoin || _requested) 
+                            ? null
+                            : (_joined
+                              ? showLeaveWarning
+                              : toggleJoin),
                           child: Center(
                             child: _loadingJoin
                                 ? const SizedBox(

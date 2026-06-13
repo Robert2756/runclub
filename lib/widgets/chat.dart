@@ -280,6 +280,7 @@ class _ActivityChatState extends State<ActivityChat> {
           'user_id': userId,
           'last_read_at': null,
           'status': "joined" ,
+          'joined_at': DateTime.now().toIso8601String(),
         });
         await supabase.from('notifications').insert({
           'from_user': userId,

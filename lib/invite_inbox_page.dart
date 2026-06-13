@@ -22,10 +22,19 @@ class InviteInboxSheet extends StatefulWidget {
 class _InviteInboxSheetState extends State<InviteInboxSheet>
     with SingleTickerProviderStateMixin {
   bool loading = true;
-  List<bool> loadStatesAccepts = [];
-  List<bool> loadStatesDeletes = [];
+  Map<String, bool> loadStatesAccepts = {};
+  Map<String, bool> loadStatesDeletes = {};
   bool loadDelete = false;
   List<Map<String, dynamic>> notifications = [];
+  String _filter = 'all';
+  final List<String> _filters = [
+    'all',
+    'invite',
+    'request',
+    'chat',
+    'join',
+  ];
+  bool _showFilters = false;
 
   @override
   void initState() {
@@ -54,6 +63,9 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
 
     final normalNotifications =
         List<Map<String, dynamic>>.from(results[0] as List); // {id: x, from_user: x, to_user: x, post_id: x, created_at, type: x, is_seen: x, posts: {}, profiles: {}}
+    for (final n in normalNotifications) {
+      // debugPrint("Notification normal $n");
+    }
     
     final normalNotificationsNorm = normalNotifications.map((n) {
       return {
@@ -61,16 +73,18 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         'id': n['id'],
         'post_id': n['post_id'],
         'from_user': n['from_user'],
+        'to_user': n['to_user'],
         'title': n['posts']?['title'],
-        'username': n['posts']?['username'],
+        'username': n['profiles']?['username'],
         'starts_at': n['posts']?['starts_at'],
         'town': n['posts']?['town'],
         'avatar_url': n['profiles']?['avatar_url'],
         'is_seen': n['is_seen'],
         'created_at': n['created_at'],
+        'notification_key': 'n_${n['id']}',
       };
     }).toList();
-    debugPrint("Normal notifications: $normalNotificationsNorm");
+    // debugPrint("Normal notifications: $normalNotificationsNorm");
 
     final chatNotifications =
         List<Map<String, dynamic>>.from(results[1] as List); // {post_id: x, unread_count: x, latest_message: timestamptz}
@@ -83,9 +97,10 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         'image_url': c['image_url'],
         'unread_count': c['unread_count'],
         'created_at': c['latest_message'],
+        'notification_key': 'chat_${c['post_id']}',
       };
     }).toList();
-    debugPrint("Chat notifications: $chatNotificationsNorm");
+    // debugPrint("Chat notifications: $chatNotificationsNorm");
 
     // merge both into one notification scheme
     final merged = [...normalNotificationsNorm, ...chatNotificationsNorm];
@@ -95,14 +110,20 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
       final bTime = DateTime.parse(b['created_at']);
       return bTime.compareTo(aTime);
     });
-    debugPrint("Notifications: $merged");
+    // debugPrint("Notifications: $merged");
 
+    if (!mounted) return;
     setState(() {
       notifications = List<Map<String, dynamic>>.from(merged);
-      loadStatesAccepts =
-          List.filled(notifications.length, false);
-      loadStatesDeletes =
-          List.filled(notifications.length, false);
+      loadStatesAccepts = {
+        for (final n in notifications)
+          n['notification_key']: false,
+      };
+
+      loadStatesDeletes = {
+        for (final n in notifications)
+          n['notification_key']: false,
+      };
       loading = false;
     });
     await markAllSeen();
@@ -122,23 +143,34 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
   }
 
   Future<void> acceptRequest(Map<String, dynamic> request, int index) async {
+    final key = request['notification_key'];
     setState(() {
-      loadStatesAccepts[index] = true;
+      loadStatesAccepts[key] = true;
     });
-    debugPrint("Request id: ${request['id']}");
+    // debugPrint("Request id: ${request['id']}");
     final user = supabase.auth.currentUser!.id;
-    debugPrint("User: $user");
-    debugPrint("to_user: ${request['to_user']}");
-    debugPrint("Notification accepted: $request");
+    // debugPrint("User: $user");
+    // debugPrint("to_user: ${request['to_user']}");
+    // debugPrint("Notification accepted: $request");
     // accept request
     try {
       await supabase
         .from('activity_participants')
         .update({
           'status': 'joined',
+          'joined_at': DateTime.now().toIso8601String()
         })
         .eq('post_id', request['post_id'])
         .eq('user_id', request['from_user']);
+      
+      // insert accept notification
+      await supabase.from('notifications').insert({
+            'from_user': request['to_user'],
+            'to_user': request['from_user'],
+            'post_id': request['post_id'],
+            'created_at': DateTime.now().toIso8601String(),
+            'type': 'accept'
+          });
       
       await deleteNotification(request, index);
     } catch (e) {
@@ -146,14 +178,15 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     } finally {
       await fetchNotifications();
       setState(() {
-        loadStatesAccepts[index] = false;
+        loadStatesAccepts[key] = false;
       });
     }
   }
 
   Future<void> deleteRequest(Map<String, dynamic> request, int index) async {
+    final key = request['notification_key'];
     setState(() {
-      loadStatesDeletes[index] = true;
+      loadStatesDeletes[key] = true;
     });
 
     try {
@@ -170,13 +203,15 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
       debugPrint('Error deleting from_user from activity: $e');
     } finally {
       await fetchNotifications();
+      if (!mounted) return;
       setState(() {
-        loadStatesDeletes[index] = false;
+        loadStatesDeletes[key] = false;
       });
     }
   }
 
   Future<void> deleteNotification(Map<String, dynamic> request, int index) async {
+    final key = request['notification_key'];
     try {
       // delete request from notifications
       await supabase
@@ -188,15 +223,14 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
       debugPrint('Error deleting request: $e');
     } finally {
       await fetchNotifications();
+      if (!mounted) return;
       setState(() {
-        loadStatesDeletes[index] = false;
+        loadStatesDeletes[key] = false;
       });
     }
   }
 
   void _openActivity (Map<String, dynamic> notification) async {
-    Navigator.pop(context);
-
     final changed = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -207,8 +241,10 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
       ),
     );
 
+    if (!mounted) return;
+
     // fetch new notification if coming back
-    fetchNotifications();
+    await fetchNotifications();
 
     if (changed == true) {
       Navigator.pop(context, true); // bubble upward
@@ -430,12 +466,14 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     Map<String, dynamic> notification,
     int index,
   ) {
-    debugPrint("Request notification: $notification");
+    // debugPrint("Request notification: $notification");
     // final post = notification['posts'];
     // final user = notification['profiles'];
     final isNew = notification['is_seen'] == false;
     final postId = notification['post_id'];
     final fromUserId = notification['from_user'];
+    final key = notification['notification_key'];
+
 
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
@@ -551,7 +589,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
             children: [
               /// ACCEPT (MORE PRESENT)
               InkWell(
-                onTap: loadStatesAccepts[index]
+                onTap: loadStatesAccepts[key] ?? false
                     ? null
                     : () => acceptRequest(notification, index),
                 borderRadius: BorderRadius.circular(12),
@@ -567,7 +605,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                   child: SizedBox(
                     width: 65, // pick a value that fits "Annehmen"
                     child: Center(
-                      child: loadStatesAccepts[index]
+                      child: loadStatesAccepts[key] ?? false
                           ? const SizedBox(
                               width: 14,
                               height: 14,
@@ -593,7 +631,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
               const SizedBox(width: 5),
               /// REJECT (subtle icon)
               InkWell(
-                onTap: loadStatesDeletes[index]
+                onTap: loadStatesDeletes[key] ?? false
                     ? null
                     : () => deleteRequest(notification, index),
                 borderRadius: BorderRadius.circular(20),
@@ -603,7 +641,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                     color: Colors.grey.shade100,
                     shape: BoxShape.circle,
                   ),
-                  child: loadStatesDeletes[index]
+                  child: loadStatesDeletes[key] ?? false
                     ? const SizedBox(
                         width: 14,
                         height: 14,
@@ -818,6 +856,130 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     );
   }
 
+  Widget _buildAcceptCard(Map<String, dynamic> notification) {
+    final isNew = notification['is_seen'] == false;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+      decoration: BoxDecoration(
+        color: isNew ? Colors.blue.withOpacity(0.04) : Colors.transparent,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          /// AVATAR
+          CircleAvatar(
+            radius: 26,
+            backgroundImage: notification['avatar_url'] != null
+                ? NetworkImage(notification['avatar_url'])
+                : null,
+            child: notification['avatar_url'] == null
+                ? const Icon(Icons.person, size: 16)
+                : null,
+          ),
+
+          const SizedBox(width: 12),
+
+          /// TEXT
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 13.5,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: notification['username'] ?? 'Jemand',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const TextSpan(text: ' hat deine Anfrage angenommen'),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 3),
+
+                Text(
+                  notification['title'] ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          /// ACTION (same black CTA style as others)
+          InkWell(
+            onTap: () => _openActivity(notification),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 7,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                "Ansehen",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modernFilterChip(String label, String value) {
+    final selected = _filter == value;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _filter = value;
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? Colors.black : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(
+            color: selected ? Colors.black : Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w500,
+            color: selected ? Colors.white : Colors.black87,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildNotificationCard(
     Map<String, dynamic> notification,
     int index,
@@ -834,6 +996,9 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
       
       case 'chat':
         return _buildMessageCard(notification);
+      
+      case 'accept':
+        return _buildAcceptCard(notification);
 
       // case 'participant_left':
       //   return _buildLeftCard(notification);
@@ -866,22 +1031,73 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
 
             const SizedBox(height: 16),
 
-            const Text(
-              "Benachrichtigungen",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            SizedBox(
+              height: 48,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Center(
+                    child: Text(
+                      "Benachrichtigungen",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+
+                  Positioned(
+                    right: 0,
+                    child: IconButton(
+                      icon: const Icon(Icons.tune),
+                      onPressed: () {
+                        setState(() {
+                          _showFilters = !_showFilters;
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
 
-            const SizedBox(height: 12),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              child: _showFilters
+                  ? Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _modernFilterChip('Alle', 'all'),
+                          _modernFilterChip('Einladungen', 'invite'),
+                          _modernFilterChip('Anfragen', 'request'),
+                          _modernFilterChip('Chat', 'chat'),
+                          _modernFilterChip('Beigetreten', 'join'),
+                          _modernFilterChip('Angenommen', 'accept'),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+
+            const SizedBox(height: 6),
             
             Expanded(
               child: Builder(
                 builder: (context) {
                   final List<Widget> items = [];
+                  final List<Map<String, dynamic>> filteredNotifications =
+                  _filter == 'all'
+                      ? notifications
+                      : notifications.where((n) => n['type'] == _filter).toList();
 
                   String? currentGroup;
 
-                  for (int i = 0; i < notifications.length; i++) {
-                    final notification = notifications[i];
+                  for (int i = 0; i < filteredNotifications.length; i++) {
+                    final notification = filteredNotifications[i];
 
                     final createdAt = DateTime.parse(
                       notification['created_at'],
@@ -896,6 +1112,8 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                         _sectionHeader(group),
                       );
                     }
+
+                    // debugPrint("Notification processed: $notification");
 
                     items.add(
                       _buildNotificationCard(

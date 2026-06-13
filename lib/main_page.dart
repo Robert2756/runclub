@@ -40,7 +40,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
         // social notifications
         .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
+          event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'notifications',
           filter: PostgresChangeFilter(
@@ -55,7 +55,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
         // chat messages
         .onPostgresChanges(
-          event: PostgresChangeEvent.update,
+          event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'activity_participants',
           callback: (_) {
@@ -73,7 +73,7 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.removeObserver(this);
     supabase.removeChannel(_notificationChannel);
     super.dispose();
   }

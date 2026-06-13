@@ -183,9 +183,6 @@ class FeedPageState extends State<FeedPage> {
         final minLon = lon - lonDelta;
         final maxLon = lon + lonDelta;
 
-        final minStartTime = DateTime.now().toUtc().add(
-          const Duration(minutes: 10),
-        );
         // fetch post
         final data = await supabase
             .from('posts')
@@ -194,7 +191,7 @@ class FeedPageState extends State<FeedPage> {
             .lte('latitude', maxLat)
             .gte('longitude', minLon)
             .lte('longitude', maxLon)
-            .gte('starts_at', minStartTime.toIso8601String())
+            .gte('starts_at', DateTime.now().toIso8601String())
             .limit(fetch_size);
 
         // filter seen posts out

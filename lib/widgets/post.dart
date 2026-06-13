@@ -96,11 +96,13 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   }
 
   Future<List<String>> fetchParticipants() async {
+    debugPrint("FEEEEEEETCH");
     try {
       final response = await supabase
           .from ('activity_participants')
           .select ('user_id')
-          .eq('post_id', widget.post.id); // filter for this post
+          .eq('post_id', widget.post.id) // filter for this post
+          .eq('status', 'joined');
 
       final List<String> userIds = (response as List)
           .map((row) => row['user_id'] as String)
@@ -164,7 +166,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     return "Vor $d Tag${d > 1 ? "en" : ""}";
   }
 
-  Widget _buildMap({double initialZoom = 13, bool showMarker = true}) {
+  Widget _buildMap({double initialZoom = 12, bool showMarker = true}) {
     final location = (widget.post.latitude != null && widget.post.longitude != null)
         ? LatLng(widget.post.latitude!, widget.post.longitude!)
         : LatLng(0.0, 0.0);
@@ -187,29 +189,36 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
           if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
             MarkerLayer(
               markers: [
-                if (widget.post.latitude != null && widget.post.longitude != null)
-                  Marker(
-                    point: LatLng(widget.post.latitude!, widget.post.longitude!),
-                    width: 42,
-                    height: 46,
-                    alignment: Alignment.topCenter,
-                    child: CustomPaint(
-                      painter: RunMarkerPainter(),
-                      child: const SizedBox(
-                        width: 42,
-                        height: 46,
-                        child: Center(
-                          child: Icon(
-                            Icons.directions_run,
-                            color: Colors.white,
-                            size: 18,
-                          ),
+                Marker(
+                  point: location,
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.topCenter,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.18),
+                          blurRadius: 14,
+                          offset: const Offset(0, 6),
                         ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Icon(
+                        widget.post.activity == "Bike"
+                            ? Icons.directions_bike
+                            : Icons.directions_run,
+                        color: Colors.black,
+                        size: 18,
                       ),
                     ),
                   ),
+                ),
               ],
-            ),
+            )
         ],
       ),
     );
@@ -238,8 +247,8 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     );
   }
 
-  void _openActivity() {
-    Navigator.push(
+  void _openActivity() async {
+    final refreshPost = await Navigator.push(
       context,
       PageRouteBuilder(
         pageBuilder: (_, animation, secondaryAnimation) {
@@ -260,6 +269,12 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
         transitionDuration: const Duration(milliseconds: 250),
       ),
     );
+
+    if (!mounted) return;
+    debugPrint("returned from ActivityPage: $refreshPost");
+    if (refreshPost == true) {
+      await fetchParticipantAvatars();
+    }
   }
 
   // initial fetch when page is first opened
