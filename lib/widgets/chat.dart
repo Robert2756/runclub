@@ -282,7 +282,7 @@ class _ActivityChatState extends State<ActivityChat> {
         await supabase.from('activity_participants').insert({
           'post_id': widget.post!.id,
           'user_id': userId,
-          'last_read_at': null,
+          'last_read_at': DateTime.now().toIso8601String(),
           'status': "joined" ,
           'joined_at': DateTime.now().toIso8601String(),
         });

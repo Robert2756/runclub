@@ -270,8 +270,8 @@ class FeedPageState extends State<FeedPage> {
 
       post['score'] =
         0.55 * timeScore +
-        0.35 * distanceScore +
-        0.10 * freshnessScore;
+        0.45 * distanceScore;
+        // 0.10 * freshnessScore;
       
       debugPrint("Combined Score: ${post['score']}");
       debugPrint(

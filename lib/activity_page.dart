@@ -13,6 +13,13 @@ import 'participant_page.dart';
 import 'widgets/chat.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'chat_page.dart';
+import 'package:share_plus/share_plus.dart';
+import 'dart:ui' as ui;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/rendering.dart';
+import 'activity_share_page.dart';
+import 'package:device_calendar/device_calendar.dart';
 final supabase = Supabase.instance.client;
 
 enum ActivityMode {
@@ -492,6 +499,146 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     }
   }
 
+  String? getStoragePathFromUrl(String url) {
+    final uri = Uri.parse(url);
+    final segments = uri.pathSegments;
+
+    final index = segments.indexOf('public');
+    if (index == -1 || index + 2 >= segments.length) return null;
+
+    // everything after /public/<bucket>/
+    return segments.sublist(index + 2).join('/');
+  }
+
+  Future<void> _deleteActivity() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.6),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Aktivität löschen?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                Text(
+                  'Diese Aktion kann nicht rückgängig gemacht werden.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.3,
+                    color: Colors.black.withOpacity(0.65),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context, false),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'Abbrechen',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context, true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'Löschen',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    // delete messages
+    await supabase
+        .from('activity_messages')
+        .delete()
+        .eq('activity_id', post!.id);
+
+    // delete participants
+    await supabase
+        .from('activity_participants')
+        .delete()
+        .eq('post_id', post!.id);
+    
+    // delete post notifications
+    await supabase
+      .from('notifications')
+      .delete()
+      .eq('post_id', post!.id);
+
+    // delete post image
+    final imageUrl = post?.imgurl;
+    if (imageUrl != null) {
+      final path = getStoragePathFromUrl(imageUrl);
+      if (path != null) {
+        await supabase.storage.from('PostImages').remove([path]);
+      }
+    }
+
+    // delete db post row
+    await supabase.from('posts').delete().eq('id', post!.id);
+
+    if (mounted) {
+      Navigator.pop(context, true);
+    }
+  }
+
   @override
   void dispose() {
     super.dispose();
@@ -505,8 +652,297 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
   }
 
-  _addToCalendar() {
-    return 0;
+  Future<Calendar?> _pickCalendar(List<Calendar> calendars) async {
+    return showModalBottomSheet<Calendar>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Kalender auswählen',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                ...calendars.map((c) {
+                  final isWritable = (c.isReadOnly != true);
+
+                  return Opacity(
+                    opacity: isWritable ? 1 : 0.4,
+                    child: GestureDetector(
+                      onTap: isWritable
+                          ? () => Navigator.pop(context, c)
+                          : null,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 14,
+                          horizontal: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isWritable ? Icons.event : Icons.lock,
+                              size: 18,
+                              color: Colors.black,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                c.name ?? "Unbenannter Kalender",
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black,
+                                ),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right,
+                              size: 18,
+                              color: Colors.black,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _addToCalendar() async {
+    if (post == null || post!.startsAt == null) return;
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final isParticipant = participants.contains(userId);
+
+    if (!isParticipant) {
+        final join = await showDialog<bool>(
+          context: context,
+          barrierColor: Colors.black.withOpacity(0.6),
+          builder: (context) {
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Aktivität beitreten',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Du musst Teil der Aktivität sein, um sie zum Kalender hinzuzufügen.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.3,
+                        color: Colors.black.withOpacity(0.65),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => Navigator.pop(context, false),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text(
+                                'Abbrechen',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+        if (join != true) return;
+      }
+
+    final plugin = DeviceCalendarPlugin();
+
+    // request permission
+    var permResult = await plugin.requestPermissions();
+    if (permResult.data != true) return;
+
+    // get calendars and pick the default/first writable one
+    final calendarsResult = await plugin.retrieveCalendars();
+    final calendars = (calendarsResult.data ?? [])
+    .whereType<Calendar>()
+    .toList();
+
+    if (calendars.isEmpty) {
+      debugPrint("No calendars found");
+      return;
+    }
+    final writable = calendars.where((c) => c.isReadOnly != true).toList();
+    final selected = await _pickCalendar(writable.isNotEmpty ? writable : calendars);
+    
+    if (selected == null) return;
+    final calendar = selected;
+    debugPrint('Selected calendar: ${calendar.name} | id: ${calendar.id}');
+
+    // confirm adding to calendar
+    final confirm = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.6),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Kalender hinzufügen?',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                Text(
+                  'Zu "${calendar.name}" hinzufügen?',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.3,
+                    color: Colors.black.withOpacity(0.65),
+                  ),
+                ),
+
+                const SizedBox(height: 18),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context, false),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'Abbrechen',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(width: 10),
+
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context, true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text(
+                            'Hinzufügen',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (confirm != true) return;
+
+    final start = DateTime.parse(post!.startsAt!).toLocal();
+    final end = start.add(const Duration(hours: 1));
+
+    final event = Event(
+      calendar.id!,
+      title: post!.title,
+      description: post!.description ?? '',
+      start: TZDateTime.from(start, local),
+      end: TZDateTime.from(end, local),
+      location: post!.town ?? '',
+    );
+
+    final result = await plugin.createOrUpdateEvent(event);
+
+    if (mounted && result?.data != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Zum Kalender hinzugefügt ✓')),
+      );
+    }
   }
 
   Widget _buildMap({double initialZoom = 13, bool showMarker = true}) {
@@ -813,6 +1249,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                 post: post!,
                 initialJoined: _joined,
                 initialRequested: _requested,
+                participantsCount: count,
               ),
             ),
           );
@@ -916,9 +1353,74 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
           _tab("Details", ActivityMode.details),
           const SizedBox(width: 8),
           _tab("Chat", ActivityMode.chat),
+
+          const Spacer(),
+
+          IconButton(
+            icon: const Icon(Icons.more_horiz),
+            onPressed: _showActivityOptions,
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _showActivityOptions() async {
+    final isOwner =
+        post?.creatorId == supabase.auth.currentUser?.id;
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(24),
+        ),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+
+              if (isOwner)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline),
+                  title: const Text("Aktivität löschen"),
+                  onTap: () => Navigator.pop(context, "delete"),
+                ),
+
+              ListTile(
+                leading: const Icon(Icons.share_outlined),
+                title: const Text("Teilen"),
+                onTap: () => Navigator.pop(context, "share"),
+              ),
+
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+
+    switch (action) {
+      case "delete":
+        await _deleteActivity();
+        break;
+
+      case "share":
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ActivitySharePage(
+              post: post!,
+              participants: count,
+              profileName: _profileName,
+            ),
+          ),
+        );
+        break;
+    }
   }
 
   Widget _buildContent(ScrollController controller) {
@@ -1141,7 +1643,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                 ),
 
                 GestureDetector(
-                  onTap: _addToCalendar,
+                  onTap: () => _addToCalendar(),
                   child: Text(
                     "Kalender hinzufügen",
                     style: TextStyle(

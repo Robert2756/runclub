@@ -6,12 +6,14 @@ class ActivityChatPage extends StatefulWidget {
   final Post post;
   final bool initialJoined;
   final bool initialRequested;
+  final int participantsCount;
 
   const ActivityChatPage({
     super.key,
     required this.post,
     required this.initialJoined,
     required this.initialRequested,
+    required this.participantsCount,
   });
 
   @override
@@ -52,28 +54,87 @@ class ActivityChatPageState extends State<ActivityChatPage> {
     );
   }
 
+  Widget _buildTopBar() {
+    return Container(
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 5,
+      ),
+      color: Colors.white,
+      child: SizedBox(
+        height: 60,
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new),
+              onPressed: () => Navigator.pop(context),
+            ),
+
+            const SizedBox(width: 12),
+            CircleAvatar(
+              radius: 20,
+              backgroundImage: widget.post.imgurl != null
+                  ? NetworkImage(widget.post.imgurl!)
+                  : null,
+              child: widget.post.imgurl == null
+                  ? const Icon(Icons.directions_run)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.post.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+
+                  Text(
+                    "${widget.participantsCount} ${widget.participantsCount == 1 ? "Person" : "Personen"}",
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Padding(
+            //   padding: const EdgeInsets.only(left: 12),
+            //   child: _buildBackButton(context),
+            // ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      body: Stack(
+      body: Column(
         children: [
-          ActivityChat(
-            post: widget.post,
-            initialJoined: _joined,
-            initialRequested: _requested,
-            isActive: true,
-            markUnread: () {},
-            joinMode: widget.post.joinMode,
-            onActiveRead: null,
-          ),
-
-          // BACK BUTTON
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            left: 12,
-            child: _buildBackButton(context),
-          ),
+          _buildTopBar(),
+          Expanded(
+            child: ActivityChat(
+              post: widget.post,
+              initialJoined: _joined,
+              initialRequested: _requested,
+              isActive: true,
+              markUnread: () {},
+              joinMode: widget.post.joinMode,
+              onActiveRead: null,
+            ),
+          )
         ],
       ),
     );

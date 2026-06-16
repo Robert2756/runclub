@@ -317,6 +317,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     // final post = notification['posts'];
     // final fromUser = notification['profiles'];
     final isNew = notification['is_seen'] == false;
+    final fromUserId = notification['from_user'];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
@@ -334,14 +335,26 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         children: [
 
           /// AVATAR
-          CircleAvatar(
-            radius: 26,
-            backgroundImage: notification['avatar_url'] != null
-                ? NetworkImage(notification['avatar_url'])
-                : null,
-            child: notification['avatar_url'] == null
-                ? const Icon(Icons.person, size: 16)
-                : null,
+          InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfilePage(
+                    profileId: fromUserId,
+                  ),
+                ),
+              );
+            },
+            child: CircleAvatar(
+              radius: 26,
+              backgroundImage: notification['avatar_url'] != null
+                  ? NetworkImage(notification['avatar_url'])
+                  : null,
+              child: notification['avatar_url'] == null
+                  ? const Icon(Icons.person, size: 16)
+                  : null,
+            ),
           ),
 
           const SizedBox(width: 12),
@@ -670,6 +683,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     // final post = notification['posts'];
     // final user = notification['profiles'];
     final isNew = notification['is_seen'] == false;
+    final fromUserId = notification['from_user'];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
@@ -682,14 +696,27 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         children: [
           
           /// AVATAR
-          CircleAvatar(
-            radius: 26,
-            backgroundImage: notification['avatar_url'] != null
-                ? NetworkImage(notification['avatar_url'])
-                : null,
-            child: notification['avatar_url'] == null
-                ? const Icon(Icons.person, size: 16)
-                : null,
+          /// AVATAR
+          InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfilePage(
+                    profileId: fromUserId,
+                  ),
+                ),
+              );
+            },
+            child: CircleAvatar(
+              radius: 26,
+              backgroundImage: notification['avatar_url'] != null
+                  ? NetworkImage(notification['avatar_url'])
+                  : null,
+              child: notification['avatar_url'] == null
+                  ? const Icon(Icons.person, size: 16)
+                  : null,
+            ),
           ),
 
           const SizedBox(width: 12),
@@ -858,6 +885,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
 
   Widget _buildAcceptCard(Map<String, dynamic> notification) {
     final isNew = notification['is_seen'] == false;
+    final fromUserId = notification['from_user'];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 2),
@@ -869,14 +897,26 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           /// AVATAR
-          CircleAvatar(
-            radius: 26,
-            backgroundImage: notification['avatar_url'] != null
-                ? NetworkImage(notification['avatar_url'])
-                : null,
-            child: notification['avatar_url'] == null
-                ? const Icon(Icons.person, size: 16)
-                : null,
+          InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfilePage(
+                    profileId: fromUserId,
+                  ),
+                ),
+              );
+            },
+            child: CircleAvatar(
+              radius: 26,
+              backgroundImage: notification['avatar_url'] != null
+                  ? NetworkImage(notification['avatar_url'])
+                  : null,
+              child: notification['avatar_url'] == null
+                  ? const Icon(Icons.person, size: 16)
+                  : null,
+            ),
           ),
 
           const SizedBox(width: 12),
