@@ -13,6 +13,7 @@ import '../participant_page.dart';
 import '../activity_page.dart';
 import 'post_placeholder.dart';
 import '../services/data_formatter.dart';
+import 'package:shimmer/shimmer.dart';
 
 final supabase = Supabase.instance.client;
 final dataFormatter = DataFormatter();
@@ -24,6 +25,7 @@ class PostCard extends StatefulWidget {
   final String usernameCreator;
   final String avatarUrlCreator;
   final List participantIds;
+  final void Function(String postId)? onPostDeleted;
 
   const PostCard({
     super.key,
@@ -33,6 +35,7 @@ class PostCard extends StatefulWidget {
     required this.usernameCreator,
     required this.avatarUrlCreator,
     required this.participantIds,
+    this.onPostDeleted,
   });
   @override
   State<PostCard> createState() => _PostCardState();
@@ -51,11 +54,22 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     'https://i.pravatar.cc/40?img=10'];
   bool isReady = false;
   final bullet = " •\u200B ";
+  bool _imageLoaded = false;
+  
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+
+  @override
+  void didUpdateWidget(covariant PostCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.post.id != widget.post.id) {
+      _imageLoaded = false;
+    }
+  }
 
   Future<void> loadAll() async {
     try {
@@ -225,12 +239,84 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   }
 
   Widget _buildImage() {
+  //   return AspectRatio(
+  //     aspectRatio: 1 / 1,
+  //     child: Container(
+  //       color: Colors.grey.shade200, // fallback background
+  //       child: Image.network(
+  //         widget.post.imgurl!,
+  //         fit: BoxFit.cover,
+
+  //         // while loading
+  //         loadingBuilder: (context, child, loadingProgress) {
+  //           if (loadingProgress == null) return child;
+
+  //           return Shimmer.fromColors(
+  //             baseColor: Colors.grey.shade200,
+  //             highlightColor: Colors.grey.shade50,
+  //             period: const Duration(milliseconds: 1400),
+  //             child: SizedBox.expand(
+  //               child: Container(
+  //                 decoration: BoxDecoration(
+  //                   color: Colors.grey.shade300,
+  //                 ),
+  //               ),
+  //             ),
+  //           );
+  //         },
+
+  //         // when it fails
+  //         errorBuilder: (context, error, stackTrace) {
+  //           return Container(
+  //             color: Colors.grey.shade200,
+  //             child: const Center(
+  //               child: Icon(
+  //                 Icons.image_not_supported_outlined,
+  //                 size: 32,
+  //                 color: Colors.grey,
+  //               ),
+  //             ),
+  //           );
+  //         },
+  //       ),
+  //     ),
+  //   );
+  // }
     return AspectRatio(
-      aspectRatio: 1 / 1, // 4 / 3, // 1 / 1,
-      child: Image.network(
-        widget.post.imgurl!,
-        fit: BoxFit.cover,
-      )
+      aspectRatio: 1 / 1,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.network(
+            widget.post.imgurl!,
+            fit: BoxFit.cover,
+            frameBuilder: (context, child, frame, wasSyncLoaded) {
+              if (wasSyncLoaded || frame != null) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    setState(() => _imageLoaded = true);
+                  }
+                });
+                return child;
+              }
+
+              return const SizedBox.shrink();
+            },
+            errorBuilder: (_, __, ___) => Container(
+              color: Colors.grey.shade200,
+              child: const Icon(Icons.image_not_supported_outlined),
+            ),
+          ),
+
+          if (!_imageLoaded)
+            Shimmer.fromColors(
+              baseColor: Colors.grey.shade200,
+              highlightColor: Colors.grey.shade100,
+              period: const Duration(milliseconds: 1400),
+              child: Container(color: Colors.grey.shade200),
+            ),
+        ],
+      ),
     );
   }
 
@@ -271,10 +357,11 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     );
 
     if (!mounted) return;
-    debugPrint("returned from ActivityPage: $refreshPost");
-    if (refreshPost == true) {
-      await fetchParticipantAvatars();
-    }
+    // debugPrint("returned from ActivityPage: $refreshPost");
+    // if (refreshPost == true) {
+    //   await fetchParticipantAvatars();
+    //   widget.onPostDeleted?.call(widget.post.id);
+    // }
   }
 
   // initial fetch when page is first opened
@@ -470,18 +557,9 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                     ? Stack(
                         children: [
                           // Main media
-                          GestureDetector(
-                            onTap: () {
-                              widget.onToggle(!widget.showImageMain);
-                            },
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 250),
-                              child: widget.showImageMain
-                                  ? _buildImage()
-                                  : _buildMap(),
-                            ),
-                          ),
-
+                          widget.showImageMain
+                            ? _buildImage()
+                            : _buildMap(), 
                           // Small floating preview
                           Positioned(
                             bottom: 14,

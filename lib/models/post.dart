@@ -18,6 +18,7 @@ class Post {
   final String? joinMode;
   final int? userdistance;
   final String? startsAt;
+  final String? meetingPoint;
 
   Post({
     required this.id,
@@ -39,5 +40,6 @@ class Post {
     this.joinMode,
     this.userdistance,
     this.startsAt,
+    this.meetingPoint,
   });
 }

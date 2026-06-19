@@ -49,6 +49,7 @@ class FeedPageState extends State<FeedPage> {
   bool _hasMore = true; // more posts to load?
   int _refreshVersion = 0;
   FeedStatus _status = FeedStatus.loadingInitial;
+  Post? _pinnedPost;
 
   // radius filtering
   double _radiusMeters = 2000; // start small: 2km
@@ -304,6 +305,11 @@ class FeedPageState extends State<FeedPage> {
 
   Future<void> _applyPosts() async {
     // if (candidatePool.isEmpty) return;
+    if (_pinnedPost != null) {
+      candidatePool.removeWhere(
+        (p) => p['id'].toString() == _pinnedPost!.id.toString(),
+      );
+    }
 
     setState(() {
       _status = FeedStatus.applyCandidates;
@@ -326,11 +332,35 @@ class FeedPageState extends State<FeedPage> {
       seenPostIds.add(post['id'].toString());
     }
 
+    // if there is a pinned post apply on top, empty after
+    if (_pinnedPost != null) {
+      final pinnedMap = {
+        'id': _pinnedPost!.id,
+        'title': _pinnedPost!.title,
+        'creator_id': _pinnedPost!.creatorId,
+        'image_url': _pinnedPost!.imgurl,
+        'description': _pinnedPost!.description,
+        'activity': _pinnedPost!.activity,
+        'distance': _pinnedPost!.distance,
+        'pace': _pinnedPost!.pace,
+        'latitude': _pinnedPost!.latitude,
+        'longitude': _pinnedPost!.longitude,
+        'town': _pinnedPost!.town,
+        'created_at': _pinnedPost!.createdAt,
+        'starts_at': _pinnedPost!.startsAt,
+      };
+
+      pinnedMap['user_distance'] = _computeDistanceMeters(pinnedMap);
+      newPosts.insert(0, pinnedMap);
+      _pinnedPost = null;
+    }
+    debugPrint("About to be shown posts: $newPosts");
+
     // fetch additional information
     for (var post in newPosts) {
       showImageMap.putIfAbsent(
         post['id'].toString(),
-        () => post["showImageMain"],
+        () => (post["showImageMain"] as bool?) ?? true,
       );
 
       postTextLoaded.putIfAbsent(
@@ -352,6 +382,8 @@ class FeedPageState extends State<FeedPage> {
             .eq('status', 'joined') as Future<dynamic>
       ]);
 
+      debugPrint("Additional post data for ${post['title']}: $additionalPostData");
+
       // add to post
       post['username'] = additionalPostData[0]['username'];
       post['avatar_url'] = additionalPostData[0]['avatar_url'];
@@ -364,6 +396,22 @@ class FeedPageState extends State<FeedPage> {
           ? FeedStatus.exhausted
           : FeedStatus.idle;
     });
+  }
+
+  int? _computeDistanceMeters(Map<String, dynamic> post) {
+    if (!_locationEnabled || _userLat == null || _userLon == null) {
+      return null;
+    }
+
+    final distance = Distance();
+
+    final meters = distance.as(
+      LengthUnit.Meter,
+      LatLng(_userLat!, _userLon!),
+      LatLng(post['latitude'], post['longitude']),
+    );
+
+    return meters.round();
   }
 
   Future<void> uploadPostImage(File? compressedImage, String path) async {
@@ -390,6 +438,8 @@ class FeedPageState extends State<FeedPage> {
             const bottomBarHeight = 50.0; // height of AppBottomBar
             const fabSpacing = 16.0; // extra spacing for FAB
 
+            final hasPinned = _pinnedPost != null;
+            final baseCount = posts.length;
             final totalBottomPadding = standardSpacing + bottomBarHeight + fabSpacing + bottomSafeArea;
 
             return NotificationListener<ScrollNotification>(
@@ -417,7 +467,7 @@ class FeedPageState extends State<FeedPage> {
                   ),
                   itemCount: posts.isEmpty
                     ? 1 // ALWAYS exactly one item during initial state
-                    : posts.length + (_status == FeedStatus.exhausted ? 1 : 0) + (_status == FeedStatus.loadingMore || _status == FeedStatus.applyCandidates ? 1 : 0), // add extra item for pagination loader or feed exhausted message
+                    : baseCount + (hasPinned ? 1 : 0) + (_status == FeedStatus.exhausted ? 1 : 0) + (_status == FeedStatus.loadingMore || _status == FeedStatus.applyCandidates ? 1 : 0), // add extra item for pagination loader or feed exhausted message
                   itemBuilder: (context, index) {
                     /// 1. INITIAL LOADING STATE
                     if (_status == FeedStatus.loadingInitial && _status != FeedStatus.refreshing ) {
@@ -436,13 +486,6 @@ class FeedPageState extends State<FeedPage> {
                     final isFooter = index >= posts.length;
 
                     if (isFooter) {
-                      // if (_status == FeedStatus.exhausted) {
-                      //   return const Padding(
-                      //     padding: EdgeInsets.all(24),
-                      //     child: Center(child: Text("No more posts")),
-                      //   );
-                      // }
-
                       if (_status == FeedStatus.loadingMore ||
                           _status == FeedStatus.applyCandidates) {
                         return const Padding(
@@ -450,7 +493,6 @@ class FeedPageState extends State<FeedPage> {
                           child: Center(child: FeedRefreshSpinner()),
                         );
                       }
-                      // return const SizedBox.shrink();
                     }
 
                     if (index < posts.length) {
@@ -486,6 +528,9 @@ class FeedPageState extends State<FeedPage> {
                               showImageMap[post['id'].toString()] = val;
                             });
                           },
+                          onPostDeleted: (id) async{
+                            await _refreshFeed();
+                          },
                         ),
                       );
                     }
@@ -503,20 +548,30 @@ class FeedPageState extends State<FeedPage> {
           height: 56,
           child: FloatingActionButton(
             onPressed: () async {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const CreatePostPageV2(),
-              ),
-            );
-              if (result == true) {
-                // refresh paging state of feed
-                _hasMore = true;
-                posts = [];
-                _dbOffset = 0;
-                // radius filtering
-                _radiusMeters = 2000; // start small: 2km
-                fetchCandidates();
+              final newPostPinned = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CreatePostPageV2(),
+                ),
+              );
+              if (newPostPinned != null) {
+                // pin newly created post
+                setState(() {
+                  _hasMore = true;
+                  _status = FeedStatus.loadingInitial;
+
+                  posts.clear();
+                  candidatePool.clear();
+                  seenPostIds.clear();
+
+                  _dbOffset = 0;
+                  _radiusMeters = 2000;
+
+                  _pinnedPost = newPostPinned as Post;
+                  debugPrint("New post pinned: ${newPostPinned.imgurl}");
+                });
+          
+                await _refreshFeed();
               }
             },
             backgroundColor: Colors.black,

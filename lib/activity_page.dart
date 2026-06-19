@@ -92,6 +92,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   bool _loadingJoin = false;
   bool get _canSeeExactLocation => _joined;
   List<String> participantAvatars = [];
+  bool _deleting = false;
   // List<String> debugParticipants = [
   //   'https://i.pravatar.cc/40?img=11',
   //   'https://i.pravatar.cc/40?img=7',
@@ -102,6 +103,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   List<String> debugParticipants = [];
   String? _avatarUrl;
   String? _profileName;
+  bool _expandedMeetingPoint = false;
   final dataFormatter = DataFormatter();
   final bullet = " •\u200B ";
   ActivityMode _mode = ActivityMode.details;
@@ -144,7 +146,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       createdAt: response['created_at'],
       joinMode: response['join_mode'],
       userdistance: widget.userDistance,
-      startsAt: response['starts_at']
+      startsAt: response['starts_at'],
+      meetingPoint: response['meeting_point']
     );
 
     final results = await Future.wait([
@@ -328,6 +331,62 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   }
 
   Future<void> showLeaveWarning() async {
+    if (post!.creatorId == supabase.auth.currentUser!.id) {
+      await showDialog(
+        context: context,
+        barrierColor: Colors.black.withOpacity(0.6),
+        builder: (context) {
+          return Dialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Nicht möglich',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Du kannst deine eigene Aktivität nicht verlassen.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.black.withOpacity(0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'Verstanden',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  )
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      return;
+    }
+
     final leave = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.6),
@@ -511,131 +570,169 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   }
 
   Future<void> _deleteActivity() async {
+    if (_deleting) return;
+    setState(() => _deleting = true);
+
     final confirmed = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Aktivität löschen?',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
-                ),
+        bool isDeleting = false;
 
-                const SizedBox(height: 10),
-
-                Text(
-                  'Diese Aktion kann nicht rückgängig gemacht werden.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    height: 1.3,
-                    color: Colors.black.withOpacity(0.65),
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                Row(
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context, false),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'Abbrechen',
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
+                    const Text(
+                      'Aktivität löschen?',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black,
                       ),
                     ),
 
-                    const SizedBox(width: 10),
+                    const SizedBox(height: 10),
 
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context, true),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'Löschen',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
+                    Text(
+                      'Diese Aktion kann nicht rückgängig gemacht werden.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.3,
+                        color: Colors.black.withOpacity(0.65),
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: isDeleting
+                                ? null
+                                : () => Navigator.pop(context, false),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text(
+                                'Abbrechen',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+
+                        const SizedBox(width: 10),
+
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: isDeleting
+                                ? null
+                                : () async {
+                                    setState(() => isDeleting = true);
+
+                                    // close dialog AFTER setting loading state
+                                    Navigator.pop(context, true);
+                                  },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              alignment: Alignment.center,
+                              child: isDeleting
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Löschen',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
+    try {
+      if (confirmed != true) return;
 
-    if (confirmed != true) return;
+      // delete messages
+      await supabase
+          .from('activity_messages')
+          .delete()
+          .eq('activity_id', post!.id);
 
-    // delete messages
-    await supabase
-        .from('activity_messages')
-        .delete()
-        .eq('activity_id', post!.id);
-
-    // delete participants
-    await supabase
-        .from('activity_participants')
+      // delete participants
+      await supabase
+          .from('activity_participants')
+          .delete()
+          .eq('post_id', post!.id);
+      
+      // delete post notifications
+      await supabase
+        .from('notifications')
         .delete()
         .eq('post_id', post!.id);
-    
-    // delete post notifications
-    await supabase
-      .from('notifications')
-      .delete()
-      .eq('post_id', post!.id);
 
-    // delete post image
-    final imageUrl = post?.imgurl;
-    if (imageUrl != null) {
-      final path = getStoragePathFromUrl(imageUrl);
-      if (path != null) {
-        await supabase.storage.from('PostImages').remove([path]);
+      // delete post image
+      final imageUrl = post!.imgurl;
+
+      if (imageUrl != null) {
+        final uri = Uri.parse(imageUrl);
+
+        final path = uri.pathSegments.last;
+
+        debugPrint("Deleting storage object: $path");
+
+        await supabase.storage
+            .from('PostImages')
+            .remove([path]);
       }
-    }
 
-    // delete db post row
-    await supabase.from('posts').delete().eq('id', post!.id);
+      // delete db post row
+      await supabase.from('posts').delete().eq('id', post!.id);
 
-    if (mounted) {
-      Navigator.pop(context, true);
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _deleting = false);
+      }
     }
   }
 
@@ -1083,6 +1180,35 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
             ],
           ),
 
+          if (locked == false) ...[
+            const SizedBox(height: 10),
+            GestureDetector(
+            onTap: () {
+              setState(() {
+                _expandedMeetingPoint = !_expandedMeetingPoint;
+              });
+            },
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: Text(
+                locked
+                    ? "Sichtbar nach Beitritt"
+                    : (post!.meetingPoint ?? "Kein genauer Treffpunkt angegeben."),
+                maxLines: _expandedMeetingPoint ? 3 : 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: true,
+                style: TextStyle(
+                  color: const Color.fromARGB(255, 62, 62, 62).withOpacity(0.9),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+          )
+          ],
+
           const SizedBox(height: 10),
 
           // MAP PREVIEW (no card, just rounded clip)
@@ -1396,6 +1522,13 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                 onTap: () => Navigator.pop(context, "share"),
               ),
 
+
+              ListTile(
+                leading: const Icon(Icons.report_outlined),
+                title: const Text("Melden"),
+                onTap: () => Navigator.pop(context, "report"),
+              ),
+
               const SizedBox(height: 8),
             ],
           ),
@@ -1420,6 +1553,113 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
           ),
         );
         break;
+      
+      case "report":
+        await _showReportDialog();
+        break;
+
+    }
+  }
+
+  Future<void> _showReportDialog() async {
+    final reasonController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.6),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Melden",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+
+                TextField(
+                  controller: reasonController,
+                  decoration: const InputDecoration(
+                    hintText: "Grund (optional)",
+                  ),
+                  maxLines: 3,
+                ),
+
+                const SizedBox(height: 18),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context, false),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          alignment: Alignment.center,
+                          child: const Text("Abbrechen"),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context, true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          color: Colors.black,
+                          alignment: Alignment.center,
+                          child: const Text(
+                            "Senden",
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    await _reportActivity(reasonController.text.trim());
+  }
+
+  Future<void> _reportActivity(String? reason) async {
+    final userId = supabase.auth.currentUser!.id;
+
+    try {
+      await supabase
+          .from('activity_participants')
+          .update({
+            'reported': true,
+            'report_reason': reason?.isEmpty == true ? null : reason,
+            'reported_at': DateTime.now().toIso8601String(),
+          })
+          .eq('post_id', post!.id)
+          .eq('user_id', userId);
+
+      // optional: feedback UI
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Gemeldet ✓")),
+        );
+      }
+    } catch (e) {
+      debugPrint("Report failed: $e");
+
+      // kein Crash → still fallback
     }
   }
 
@@ -1608,6 +1848,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
                 CircleAvatar(
                   radius: 20,
+                  backgroundColor: Colors.grey[300],
                   backgroundImage: _avatarUrl != null
                       ? NetworkImage(_avatarUrl!)
                       : const NetworkImage(

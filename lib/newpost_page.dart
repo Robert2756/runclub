@@ -8,7 +8,12 @@ import 'services/image_service.dart';
 import 'widgets/map_pointer.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'models/post.dart';
 final supabase = Supabase.instance.client;
+final FocusNode descriptionFocus = FocusNode();
+final FocusNode titleFocus = FocusNode();
+final FocusNode locationFocus = FocusNode();
+final FocusNode meetingPointFocus = FocusNode();
 
 class _BasicSection extends StatelessWidget {
   final TextEditingController titleController;
@@ -45,7 +50,13 @@ class _BasicSection extends StatelessWidget {
 
   Widget _activityField(BuildContext context) {
     return InkWell(
-      onTap: () => _showActivityDialog(context),
+      onTap: () async {
+        descriptionFocus.unfocus();
+        titleFocus.unfocus();
+        locationFocus.unfocus();
+        meetingPointFocus.unfocus();
+        await _showActivityDialog(context);
+      },
       borderRadius: BorderRadius.circular(14),
       child: Container(
         width: double.infinity,
@@ -77,7 +88,7 @@ class _BasicSection extends StatelessWidget {
     );
   }
 
-  void _showActivityDialog(BuildContext context) {
+  Future<void> _showActivityDialog(BuildContext context) async {
     final activities = ["Laufen", "Radfahren"];
 
     showDialog(
@@ -275,10 +286,11 @@ class _BasicSection extends StatelessWidget {
         /// 📝 DESCRIPTION
         TextField(
           controller: descriptionController,
+          focusNode: descriptionFocus,
           maxLines: 3,
           maxLength: 500,
           decoration: InputDecoration(
-            hintText: "Optional...",
+            hintText: "Beschreibung...",
             contentPadding: const EdgeInsets.all(12),
 
             filled: true,
@@ -494,6 +506,10 @@ class _DetailsSection extends StatelessWidget {
                 ? ""
                 : DataFormatter().formatDistance(distance!),
             onTap: () async {
+              descriptionFocus.unfocus();
+              titleFocus.unfocus();
+              locationFocus.unfocus();
+              meetingPointFocus.unfocus();
               final result =
                   await SelectDataCustom().showDistanceDialog(context);
 
@@ -513,6 +529,10 @@ class _DetailsSection extends StatelessWidget {
                   ? ""
                   : "$speed km/h",
             onTap: () async {
+              descriptionFocus.unfocus();
+              titleFocus.unfocus();
+              locationFocus.unfocus();
+              meetingPointFocus.unfocus();
               if (activity == "Laufen") {
                 final result = await SelectDataCustom().showPaceDialog(context);
                 if (result != null) onPaceChanged(result);
@@ -536,11 +556,13 @@ class _LocationSection extends StatelessWidget {
   final String mapUrl;
 
   final TextEditingController townController;
+  final TextEditingController meetingPointController;
   final VoidCallback onHelpPressed;
   final ValueChanged<String> onTownSubmitted;
   final bool mapReady;
 
   final VoidCallback onMapReady;
+  final String activity;
 
   const _LocationSection({
     required this.mapController,
@@ -548,42 +570,75 @@ class _LocationSection extends StatelessWidget {
     required this.onLocationChanged,
     required this.mapUrl,
     required this.townController,
+    required this.meetingPointController,
     required this.onHelpPressed,
     required this.onTownSubmitted,
     required this.mapReady,
     required this.onMapReady,
+    required this.activity,
   });
 
   Widget _buildTownField(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(14),
+    return Theme(
+      data: Theme.of(context).copyWith(
+        useMaterial3: false,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(
-        children: [
-          const Icon(Icons.search, size: 20, color: Colors.grey),
+      child: TextField(
+        controller: townController,
+        textInputAction: TextInputAction.search,
+        onSubmitted: onTownSubmitted,
+        decoration: InputDecoration(
+          hintText: "Ort suchen (z.B. Erfurt)",
 
-          const SizedBox(width: 8),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 14,
+          ),
 
-          Expanded(
-            child: TextField(
-              controller: townController,
-              textInputAction: TextInputAction.search,
-              onSubmitted: onTownSubmitted,
-              decoration: const InputDecoration(
-                hintText: "Ort suchen (z.B. Erfurt)",
-                border: InputBorder.none,
-              ),
+          filled: true,
+          fillColor: Colors.white,
+
+          prefixIcon: IconButton(
+            icon: const Icon(Icons.help_outline, size: 18),
+            onPressed: () {
+              showDialog(
+                barrierColor: Colors.white,
+                context: context,
+                builder: (_) => const AlertDialog(
+                  title: Text("Ort"),
+                  content: Text(
+                    "Hier kannst du grob den Ort deiner Aktivität auf der Karte auswählen. Beim Angeben von konkreten Treffpunkten, versuch möglichst öffentliche Orte zu wählen.",
+                  ),
+                ),
+              );
+            },
+          ),
+
+          suffixIcon: IconButton(
+            icon: const Icon(Icons.arrow_forward_rounded),
+            onPressed: () => onTownSubmitted(townController.text),
+          ),
+
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(
+              color: Colors.grey.shade300,
+              width: 1,
             ),
           ),
 
-          IconButton(
-            icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-            onPressed: () => onTownSubmitted(townController.text),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(
+              color: Colors.black,
+              width: 1.5,
+            ),
           ),
-        ],
+
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
       ),
     );
   }
@@ -621,20 +676,28 @@ class _LocationSection extends StatelessWidget {
             markers: [
               Marker(
                 point: mapCenter ?? const LatLng(51.509364, -0.128928),
-                width: 42,
-                height: 46,
+                width: 44,
+                height: 44,
                 alignment: Alignment.topCenter,
-                child: CustomPaint(
-                  painter: RunMarkerPainter(),
-                  child: const SizedBox(
-                    width: 42,
-                    height: 46,
-                    child: Center(
-                      child: Icon(
-                        Icons.directions_run,
-                        color: Color.fromARGB(255, 0, 0, 0),
-                        size: 18,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.18),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
                       ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      activity == "Radfahren"
+                          ? Icons.directions_bike
+                          : Icons.directions_run,
+                      color: Colors.black,
+                      size: 18,
                     ),
                   ),
                 ),
@@ -648,19 +711,12 @@ class _LocationSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Column(
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildTownField(context),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
 
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
@@ -684,19 +740,54 @@ class _LocationSection extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 22),
+          // _buildMeetingPointField(context),
 
-          Text(
-            "Treffpunkte an öffentlichen Orten wählen, wenn du mit neuen Personen unterwegs bist.",
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade600,
-              height: 1.3,
+          TextField(
+            controller: meetingPointController,
+            focusNode: meetingPointFocus,
+            maxLength: 80,
+            decoration: InputDecoration(
+              hintText: "Konkreter Treffpunkt, z.B. Eingang Park, ...",
+              contentPadding: const EdgeInsets.all(12),
+
+              filled: true,
+              fillColor: Colors.white,
+
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: Colors.grey.shade300,
+                  width: 1,
+                ),
+              ),
+
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: Colors.black,
+                  width: 1.5,
+                ),
+              ),
+
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
           ),
+
+          // const SizedBox(width: 10),
+
+          // Text(
+          //   "Treffpunkte an öffentlichen Orten wählen, wenn du mit neuen Personen unterwegs bist.",
+          //   style: TextStyle(
+          //     fontSize: 12,
+          //     color: Colors.grey.shade600,
+          //     height: 1.3,
+          //   ),
+          // ),
         ],
-      ),
-    );
+      );
   }
 }
 
@@ -1147,6 +1238,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
   final ImageService imageService = ImageService();
   final MapController mapController = MapController();
   final townController = TextEditingController();
+  final meetingPointController = TextEditingController();
   JoinMode joinMode = JoinMode.request;
   final mapService = MapService();
   bool mapReady = false;
@@ -1224,8 +1316,9 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
     }
   }
 
-  Future<bool> addPostToDatabase() async {
-    debugPrint("Date: $date");
+  Future<Post?> addPostToDatabase() async {
+    String? url;
+
     if (date != null && time != null) {
       startsAt = DateTime(
         date!.year,
@@ -1256,6 +1349,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
           'town': postTown ?? '',
           'creator_id': supabase.auth.currentUser!.id,
           'starts_at': startsAt?.toIso8601String(),
+          'meeting_point': meetingPointController.text,
         })
         .select()
         .single();
@@ -1271,13 +1365,45 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
           fileOptions: FileOptions(upsert: true),
         );
         // link url in corresponding post
-        final url = supabase.storage.from('PostImages').getPublicUrl(path);
+        url = supabase.storage.from('PostImages').getPublicUrl(path);
         await supabase.from('posts').update({'image_url': url}).eq('id', postId);
       }
-      return true;
+
+      // post creator is joined automatically
+      await supabase.from('activity_participants').insert({
+        'post_id': postId,
+        'user_id': supabase.auth.currentUser!.id,
+        'last_read_at': null,
+        'status': "joined",
+        'joined_at': DateTime.now().toIso8601String(),
+      });
+
+      // collect post for return
+      final loadedPost = Post(
+        id: response['id'].toString(),
+        title: response['title'],
+        creatorId: response['creator_id'],
+        imgurl: url,
+        description: response['description'],
+        activity: response['activity'],
+        distance: response['distance'],
+        pace: response['pace'],
+        speed: response['speed'],
+        // date: response['date'],
+        // time: response['time'],
+        latitude: (response['latitude'] as num?)?.toDouble(),
+        longitude: response['longitude']?.toDouble(),
+        town: response['town'],
+        createdAt: response['created_at'],
+        joinMode: response['join_mode'],
+        // userdistance: widget.userDistance,
+        startsAt: response['starts_at']
+      );
+
+      return loadedPost;
     } catch (e) {
       debugPrint("Error adding post to database $e");
-      return false;
+      return null;
     }
   }
 
@@ -1494,6 +1620,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
     dateController.dispose();
     timeController.dispose();
     townController.dispose();
+    meetingPointController.dispose();
     super.dispose();
   }
 
@@ -1546,6 +1673,10 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
               setState(() => activity = val);
             },
             onPickDate: () async {
+              descriptionFocus.unfocus();
+              titleFocus.unfocus();
+              locationFocus.unfocus();
+              meetingPointFocus.unfocus();
               final result = await showDatePicker(
                 context: context,
                 firstDate: DateTime.now(),
@@ -1573,6 +1704,10 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
               }
             },
             onPickTime: () async {
+              descriptionFocus.unfocus();
+              titleFocus.unfocus();
+              locationFocus.unfocus();
+              meetingPointFocus.unfocus();
               final result = await showTimePicker(
                 context: context,
                 initialTime: TimeOfDay.now(),
@@ -1639,6 +1774,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
             title: "Standort",
             isError: missingField == "location",
             child: _LocationSection(
+              activity: activity,
               mapController: mapController,
               mapCenter: mapCenter,
               mapUrl: mapUrl,
@@ -1651,6 +1787,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
               },
 
               townController: townController,
+              meetingPointController: meetingPointController,
 
               onTownSubmitted: (value) async {
                 if (value.isEmpty) return;
@@ -1757,13 +1894,13 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
               });
 
               setState(() => isLoading = true);
-              bool success = await addPostToDatabase();
+              Post? returnPost = await addPostToDatabase();
               // add creator automatically to activity participants!!
               setState(() => isLoading = false);
 
               if (!mounted) return;
-              if (success) {
-                Navigator.pop(context, true);
+              if (returnPost != null) {
+                Navigator.pop(context, returnPost);
               }
               else {
                 showDialog(

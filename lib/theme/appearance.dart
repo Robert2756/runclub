@@ -7,6 +7,7 @@ class AppAppearance {
       color: Colors.black,
     ),
     useMaterial3: true,
+    
     // textTheme: GoogleFonts.sourceSans3TextTheme(),
     // textTheme: GoogleFonts.notoSansTextTheme(),
     // textTheme: GoogleFonts.interTextTheme(),
@@ -36,6 +37,8 @@ class AppAppearance {
     colorScheme: ColorScheme.fromSeed(
       seedColor: Colors.black,
       brightness: Brightness.light,
+    ).copyWith(
+      surfaceTint: Colors.transparent,
     ),
 
     scaffoldBackgroundColor: Colors.white,
