@@ -194,7 +194,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       .single();
 
     // ✅ ONE setState → no flicker
-    debugPrint("Fetching worked");
     setState(() {
       post = loadedPost;
       participants = userIds;
@@ -278,8 +277,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
         .count();
 
     setState(() {
-      debugPrint("last read: $lastReadAt");
-      debugPrint("Counter: ${count.count}");
       unreadCounter = count.count;
     });
   }
@@ -716,8 +713,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
         final path = uri.pathSegments.last;
 
-        debugPrint("Deleting storage object: $path");
-
         await supabase.storage
             .from('PostImages')
             .remove([path]);
@@ -918,7 +913,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     .toList();
 
     if (calendars.isEmpty) {
-      debugPrint("No calendars found");
       return;
     }
     final writable = calendars.where((c) => c.isReadOnly != true).toList();
@@ -926,7 +920,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     
     if (selected == null) return;
     final calendar = selected;
-    debugPrint('Selected calendar: ${calendar.name} | id: ${calendar.id}');
 
     // confirm adding to calendar
     final confirm = await showDialog<bool>(

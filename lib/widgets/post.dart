@@ -46,12 +46,13 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   bool _descExpanded = false;
   bool _joined = false;
   List<String> _participantAvatars = [];
-  List<String> debugParticipants = [
-    'https://i.pravatar.cc/40?img=11',
-    'https://i.pravatar.cc/40?img=7',
-    'https://i.pravatar.cc/40?img=8',
-    'https://i.pravatar.cc/40?img=9',
-    'https://i.pravatar.cc/40?img=10'];
+  // List<String> debugParticipants = [
+  //   'https://i.pravatar.cc/40?img=11',
+  //   'https://i.pravatar.cc/40?img=7',
+  //   'https://i.pravatar.cc/40?img=8',
+  //   'https://i.pravatar.cc/40?img=9',
+  //   'https://i.pravatar.cc/40?img=10'];
+  List<String> debugParticipants = [];
   bool isReady = false;
   final bullet = " •\u200B ";
   bool _imageLoaded = false;
@@ -110,7 +111,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   }
 
   Future<List<String>> fetchParticipants() async {
-    debugPrint("FEEEEEEETCH");
     try {
       final response = await supabase
           .from ('activity_participants')
@@ -205,8 +205,8 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
               markers: [
                 Marker(
                   point: location,
-                  width: 44,
-                  height: 44,
+                  width: 42,
+                  height: 46,
                   alignment: Alignment.topCenter,
                   child: Container(
                     decoration: BoxDecoration(
@@ -415,6 +415,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         },
                         child: CircleAvatar(
                           radius: 20,
+                          backgroundColor: Colors.grey[300],
                           backgroundImage: NetworkImage(widget.avatarUrlCreator)
                         ),
                       ),

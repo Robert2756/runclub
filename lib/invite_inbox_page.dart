@@ -63,9 +63,6 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
 
     final normalNotifications =
         List<Map<String, dynamic>>.from(results[0] as List); // {id: x, from_user: x, to_user: x, post_id: x, created_at, type: x, is_seen: x, posts: {}, profiles: {}}
-    for (final n in normalNotifications) {
-      // debugPrint("Notification normal $n");
-    }
     
     final normalNotificationsNorm = normalNotifications.map((n) {
       return {
@@ -130,7 +127,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
   }
 
   Future<void> markAllSeen() async {
-    debugPrint("Marking all notifications as seen...");
+    // debugPrint("Marking all notifications as seen...");
     final userId = supabase.auth.currentUser!.id;
 
     await supabase
@@ -147,11 +144,6 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     setState(() {
       loadStatesAccepts[key] = true;
     });
-    // debugPrint("Request id: ${request['id']}");
-    final user = supabase.auth.currentUser!.id;
-    // debugPrint("User: $user");
-    // debugPrint("to_user: ${request['to_user']}");
-    // debugPrint("Notification accepted: $request");
     // accept request
     try {
       await supabase
@@ -479,7 +471,6 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     Map<String, dynamic> notification,
     int index,
   ) {
-    // debugPrint("Request notification: $notification");
     // final post = notification['posts'];
     // final user = notification['profiles'];
     final isNew = notification['is_seen'] == false;
@@ -1152,8 +1143,6 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
                         _sectionHeader(group),
                       );
                     }
-
-                    // debugPrint("Notification processed: $notification");
 
                     items.add(
                       _buildNotificationCard(

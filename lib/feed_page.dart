@@ -127,7 +127,6 @@ class FeedPageState extends State<FeedPage> {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        debugPrint("Location permission denied");
         return null; // user declined
       }
       final position = await Geolocator.getCurrentPosition(
@@ -218,7 +217,6 @@ class FeedPageState extends State<FeedPage> {
       }
 
       await rankCandidates();
-      debugPrint("Status fetching candidates: $_status)");
       await _applyPosts();
 
     } catch (e) {
@@ -273,15 +271,6 @@ class FeedPageState extends State<FeedPage> {
         0.55 * timeScore +
         0.45 * distanceScore;
         // 0.10 * freshnessScore;
-      
-      debugPrint("Combined Score: ${post['score']}");
-      debugPrint(
-        "${post['title']}"
-        " score=${post['score'].toStringAsFixed(3)}"
-        " dist=${post['user_distance']}m"
-        " starts=${post['starts_at']}"
-        " created=${post['created_at']}"
-      );
     }
     candidatePool.sort((a, b) => b['score'].compareTo(a['score']));
   }
@@ -294,8 +283,6 @@ class FeedPageState extends State<FeedPage> {
 
     _radiusMeters = (_radiusMeters * _radiusStepFactor)
         .clamp(2000, _maxRadiusMeters);
-
-    debugPrint("Expanding radius to $_radiusMeters");
 
     // reset candidates
     _dbOffset = 0;
@@ -354,7 +341,6 @@ class FeedPageState extends State<FeedPage> {
       newPosts.insert(0, pinnedMap);
       _pinnedPost = null;
     }
-    debugPrint("About to be shown posts: $newPosts");
 
     // fetch additional information
     for (var post in newPosts) {
@@ -381,8 +367,6 @@ class FeedPageState extends State<FeedPage> {
             .eq('post_id', post['id']) 
             .eq('status', 'joined') as Future<dynamic>
       ]);
-
-      debugPrint("Additional post data for ${post['title']}: $additionalPostData");
 
       // add to post
       post['username'] = additionalPostData[0]['username'];
@@ -458,7 +442,7 @@ class FeedPageState extends State<FeedPage> {
                 child: ListView.builder(
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
-                  cacheExtent: 1000,
+                  cacheExtent: 400,
                   padding: EdgeInsets.fromLTRB(
                     standardSpacing, // left
                     standardSpacingTop, // top
@@ -499,39 +483,41 @@ class FeedPageState extends State<FeedPage> {
                       final post = posts[index];
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 34),
-                        child: PostCard(
-                          key: ValueKey(post['id'].toString()),
-                          post: Post(
-                            id: post['id'].toString(),
-                            title: post['title'],
-                            creatorId: post['creator_id'],
-                            imgurl: post['image_url'],
-                            description: post['description'],
-                            activity: post['activity'],
-                            distance: post['distance'],
-                            pace: post['pace'],
-                            date: post['date'],
-                            time: post['time'],
-                            latitude: post['latitude'],
-                            longitude: post['longitude'],
-                            town: post['town'],
-                            createdAt: post['created_at'],
-                            userdistance: post['user_distance'],
-                            startsAt: post['starts_at'],
+                        child: RepaintBoundary(
+                          child: PostCard(
+                            key: ValueKey(post['id'].toString()),
+                            post: Post(
+                              id: post['id'].toString(),
+                              title: post['title'],
+                              creatorId: post['creator_id'],
+                              imgurl: post['image_url'],
+                              description: post['description'],
+                              activity: post['activity'],
+                              distance: post['distance'],
+                              pace: post['pace'],
+                              date: post['date'],
+                              time: post['time'],
+                              latitude: post['latitude'],
+                              longitude: post['longitude'],
+                              town: post['town'],
+                              createdAt: post['created_at'],
+                              userdistance: post['user_distance'],
+                              startsAt: post['starts_at'],
+                            ),
+                            usernameCreator: post['username'],
+                            avatarUrlCreator: post['avatar_url'],
+                            participantIds: post["participant_ids"],
+                            showImageMain: showImageMap[post['id'].toString()] ?? true,
+                            onToggle: (val) {
+                              setState(() {
+                                showImageMap[post['id'].toString()] = val;
+                              });
+                            },
+                            onPostDeleted: (id) async{
+                              await _refreshFeed();
+                            },
                           ),
-                          usernameCreator: post['username'],
-                          avatarUrlCreator: post['avatar_url'],
-                          participantIds: post["participant_ids"],
-                          showImageMain: showImageMap[post['id'].toString()] ?? true,
-                          onToggle: (val) {
-                            setState(() {
-                              showImageMap[post['id'].toString()] = val;
-                            });
-                          },
-                          onPostDeleted: (id) async{
-                            await _refreshFeed();
-                          },
-                        ),
+                        )
                       );
                     }
                   }
@@ -568,7 +554,6 @@ class FeedPageState extends State<FeedPage> {
                   _radiusMeters = 2000;
 
                   _pinnedPost = newPostPinned as Post;
-                  debugPrint("New post pinned: ${newPostPinned.imgurl}");
                 });
           
                 await _refreshFeed();

@@ -247,6 +247,7 @@ class _BasicSection extends StatelessWidget {
         /// 📝 TITLE
         TextField(
           controller: titleController,
+          focusNode: titleFocus,
           maxLength: 80,
           decoration: InputDecoration(
             hintText: "z.B. Easy 5k Feierabendrunde",

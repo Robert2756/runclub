@@ -63,8 +63,8 @@ class _SearchPageState extends State<SearchPage> {
             ),
           ),
 
-          if (loading)
-            const LinearProgressIndicator(),
+          // if (loading)
+          //   const LinearProgressIndicator(),
 
           Expanded(
             child: ListView.builder(

@@ -16,7 +16,6 @@ class ProfileContent extends StatefulWidget {
   final bool isMe;
   final int togetherCount;
   final DateTime? lastTogether;
-  final List<Map<String, String>> endorsements;
   final String profileId;
 
   const ProfileContent({
@@ -24,7 +23,6 @@ class ProfileContent extends StatefulWidget {
     required this.isMe,
     required this.togetherCount,
     required this.lastTogether,
-    required this.endorsements,
     required this.profileId,
   });
 
@@ -37,7 +35,17 @@ class _ProfileContentState extends State<ProfileContent> {
   List<Post> joinedRuns = [];
   List<Post> hostedRuns = [];
   bool _loadingRuns = false;
-  bool _showAllRuns = false;
+  // bool _showAllRuns = false;
+  bool showCreated = false;
+  Map<int, Set<int>> grouped = {};
+  Map<String, bool> monthExpanded = {};
+  Map<String, List<Post>> monthPosts = {};
+  Map<String, bool> monthLoaded = {};
+  Map<String, bool> monthLoading = {};
+  bool _loadingJoined = false;
+  bool _loadingCreatedMeta = false;
+  bool _showAllJoined = false;
+  // bool _showAllMonths = false;
 
   @override
   void initState() {
@@ -54,64 +62,62 @@ class _ProfileContentState extends State<ProfileContent> {
       final userId = widget.profileId;
 
       // 1. joined post ids
-      final joinedRes = await supabase
-          .from('activity_participants')
-          .select('post_id')
-          .eq('user_id', userId);
+      final result = await supabase
+        .from('activity_participants')
+        .select('''
+          posts (*)
+        ''')
+        .eq('user_id', userId)
+        .gte('posts.starts_at', DateTime.now().toIso8601String());
 
-      final joinedIds =
-          (joinedRes as List).map((e) => e['post_id']).toList();
+      final joinedUpcomingResult = result
+        .map((e) => e['posts'])
+        .where((p) => p != null)
+        .toList();
 
-      // 2. fetch joined posts
-      final joinedPostsRes = joinedIds.isEmpty
-          ? []
-          : await supabase
-              .from('posts')
-              .select()
-              .inFilter('id', joinedIds);
-
-      // 3. fetch hosted posts
-      final hostedPostsRes = await supabase
-          .from('posts')
-          .select()
-          .eq('creator_id', userId);
-
-      // 4. mapper (reuse your Post model style)
-      Post mapPost(dynamic p) {
+      // convert to post objects
+      final joinedUpcomingPosts = joinedUpcomingResult.map<Post>((postData) {
         return Post(
-          id: p['id'].toString(),
-          title: p['title'],
-          creatorId: p['creator_id'],
-          imgurl: p['image_url'],
-          description: p['description'],
-          activity: p['activity'],
-          distance: p['distance'],
-          pace: p['pace'],
-          date: p['date'],
-          time: p['time'],
-          latitude: p['latitude'],
-          longitude: p['longitude'],
-          town: p['town'],
-          createdAt: p['created_at'],
+          id: postData['id'].toString(),
+          title: postData['title'],
+          creatorId: postData['creator_id'],
+          imgurl: postData['image_url'],
+          description: postData['description'],
+          activity: postData['activity'],
+          distance: postData['distance'],
+          pace: postData['pace'],
+          date: postData['date'],
+          time: postData['time'],
+          latitude: postData['latitude'],
+          longitude: postData['longitude'],
+          town: postData['town'],
+          createdAt: postData['created_at'],
+          startsAt: postData['starts_at']
         );
+      }).toList();
+
+      final joinedUpcomingPostsSorted = joinedUpcomingPosts
+      .toList()
+      ..sort((a, b) =>
+          DateTime.parse(a.startsAt!).compareTo(DateTime.parse(b.startsAt!)));
+
+      // fetch months and years that need to be loaded for the creator activities
+      final resultTimeStructure = await supabase
+        .from('posts')
+        .select('starts_at, creator_id')
+        .eq('creator_id', userId);
+      
+      Map<int, Set<int>> groupedCollect = {};
+      for (final e in resultTimeStructure) {
+        final dt = DateTime.parse(e['starts_at']);
+
+        groupedCollect.putIfAbsent(dt.year, () => <int>{});
+        groupedCollect[dt.year]!.add(dt.month);
       }
 
-      final joinedRunsLocal =
-          joinedPostsRes.map(mapPost).toList();
-      joinedRunsLocal.sort((a, b) => b.date!.compareTo(a.date!));
-
-      final hostedRunsLocal =
-          (hostedPostsRes as List).map(mapPost).toList();
-      hostedRunsLocal.sort((a, b) => b.date!.compareTo(a.date!));
-
-      // optional: remove duplicates (if user joined their own run)
-      final uniqueJoined = {
-        for (var p in joinedRunsLocal) p.id: p
-      }.values.toList();
-
       setState(() {
-        joinedRuns = uniqueJoined;
-        hostedRuns = hostedRunsLocal;
+        joinedRuns = joinedUpcomingPostsSorted;
+        grouped = groupedCollect;
       });
     } catch (e) {
       debugPrint("fetchRuns error: $e");
@@ -119,179 +125,285 @@ class _ProfileContentState extends State<ProfileContent> {
       setState(() => _loadingRuns = false);
     }
   }
-  
-  Widget _buildTab(String label, int index) {
-    final isActive = _selectedTab == index;
 
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          if (_selectedTab == index) {
-            // _showAllRuns = !_showAllRuns;
-          } else {
-            _selectedTab = index;
-          }
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        margin: const EdgeInsets.only(right: 8),
-        decoration: BoxDecoration(
-          color: isActive ? Colors.black : Colors.grey[200],
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isActive ? Colors.white : Colors.black,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
+  Future<void> _loadMonth(int year, int month) async {
+    final key = "$year-$month";
+
+    if (monthLoaded[key] == true || monthLoading[key] == true) return;
+
+    setState(() {
+      monthLoading[key] = true;
+    });
+
+    final start = DateTime(year, month, 1);
+    final end = DateTime(year, month + 1, 0, 23, 59, 59);
+
+    final userId = widget.profileId;
+
+    final result = await supabase
+        .from('posts')
+        .select('*')
+        .eq('creator_id', userId)
+        .gte('starts_at', start.toIso8601String())
+        .lte('starts_at', end.toIso8601String());
+
+    final posts = result.map<Post>((e) {
+      return Post(
+        id: e['id'].toString(),
+        title: e['title'],
+        creatorId: e['creator_id'],
+        imgurl: e['image_url'],
+        description: e['description'],
+        activity: e['activity'],
+        distance: e['distance'],
+        pace: e['pace'],
+        date: e['date'],
+        time: e['time'],
+        latitude: e['latitude'],
+        longitude: e['longitude'],
+        town: e['town'],
+        createdAt: e['created_at'],
+        startsAt: e['starts_at'],
+      );
+    }).toList();
+
+    setState(() {
+      monthPosts[key] = posts;
+      monthLoaded[key] = true;
+      monthLoading[key] = false;
+    });
+  }
+
+  Widget _buildTopToggle() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: Row(
+        children: [
+          _softToggle("Anstehend", !showCreated),
+          const SizedBox(width: 16),
+          _softToggle("Erstellt", showCreated),
+        ],
       ),
     );
   }
 
-  void _writeEndorsement() async {
-    final controller = TextEditingController();
-
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+  Widget _softToggle(String text, bool active) {
+    return GestureDetector(
+      onTap: () {
+        setState(() => showCreated = (text == "Erstellt"));
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+              color: active ? Colors.black : Colors.grey[500],
+            ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          const SizedBox(height: 4),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            height: 2,
+            width: active ? 18 : 0,
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPastGrouped(Map<int, Set<int>> grouped) {
+    final years = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 32),
+        child: Column(
+        children: years.map((year) {
+          final months = grouped[year]!;
+
+          final sortedMonths = months.toList()
+            ..sort((a, b) => b.compareTo(a));
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              const Text(
-                "Write an endorsement",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-
-              const SizedBox(height: 12),
-
-              TextField(
-                controller: controller,
-                maxLines: 3,
-                maxLength: 140,
-                decoration: InputDecoration(
-                  hintText: "How was running together?",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Text(
+                  "$year",
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
 
-              const SizedBox(height: 12),
+              ...sortedMonths.map((month) {
+                final key = "$year-$month";
+                final isExpanded = monthExpanded[key] ?? false;
+                final isLoaded = monthLoaded[key] ?? false;
 
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context, controller.text.trim()),
-                  child: const Text("Send"),
-                ),
-              ),
+                return Column(
+                  children: [
+                    ListTile(
+                      dense: true,
+                      title: Text(
+                        DateFormat.MMMM('de_DE')
+                            .format(DateTime(0, month)),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      trailing: Icon(
+                        isExpanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                      ),
+                      onTap: () async {
+                        setState(() {
+                          monthExpanded[key] = !isExpanded;
+                        });
+
+                        if (!isLoaded) {
+                          await _loadMonth(year, month);
+                        }
+                      },
+                    ),
+
+                    AnimatedCrossFade(
+                      duration: const Duration(milliseconds: 200),
+                      crossFadeState: isExpanded
+                          ? CrossFadeState.showFirst
+                          : CrossFadeState.showSecond,
+                      firstChild: monthLoading[key] == true
+                          ? const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              ),
+                            )
+                          : // Column(
+                            //   children: (monthPosts[key] ?? [])
+                            //       .map(
+                            //         (p) => Opacity(
+                            //           opacity: 0.75,
+                            //           child: PostHistory(post: p),
+                            //         ),
+                            //       )
+                            //       .toList(),
+                            // ),
+                            _buildRunsList(monthPosts[key] ?? []),
+                      secondChild: const SizedBox.shrink(),
+                    ),
+                  ],
+                );
+              }),
             ],
-          ),
-        );
-      },
+          );
+        }).toList(),
+      ),
     );
-
-    if (result != null && result.isNotEmpty) {
-      await supabase.from('endorsements').insert({
-        'from_user': supabase.auth.currentUser!.id,
-        'to_user': widget.profileId,
-        'text': result,
-        'created_at': DateTime.now().toIso8601String(),
-      });
-
-      // optional refresh
-      setState(() {});
-    }
   }
 
-  Widget _buildRunsList(List<Post> runs) {
+  Widget _buildRunsList(
+    List<Post> runs, {
+    int? limit,
+    bool showMore = false,
+  }) {
     if (runs.isEmpty) {
       final isJoined = _selectedTab == 0;
 
       return Padding(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-        child: Column(
-          children: [
-            Icon(Icons.directions_run, size: 32, color: Colors.grey[400]),
-            const SizedBox(height: 8),
-            Text(
-              isJoined ? "No joined runs yet" : "No hosted runs yet",
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ],
+        padding: const EdgeInsets.all(6),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                isJoined
+                    ? "Keiner Aktivität beigetreten"
+                    : "Noch keine Aktivität erstellt",
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.zero,
-      itemCount: runs.length,
-      itemBuilder: (context, index) {
-        final post = runs[index];
-        final isLast = index == runs.length - 1;
+    final displayRuns = limit != null ? runs.take(limit).toList() : runs;
+    return Column(
+      children: [
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
+          itemCount: displayRuns.length,
+          itemBuilder: (context, index) {
+            final post = displayRuns[index];
+            final isLast = index == runs.length;
 
-        return Padding(
-          padding: EdgeInsets.only(bottom: isLast ? 0 : 0),
-          child: RunCard(
-            post: post,
-            participantCount: null,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ActivityPage(
-                    postId: post.id,
-                    userDistance: post.userdistance,
-                  ),
-                ),
-              );
+            return Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 6 : 0),
+              child: RunCard(
+                post: post,
+                participantCount: null,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ActivityPage(
+                        postId: post.id,
+                        userDistance: post.userdistance,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        if (showMore)
+          TextButton(
+            onPressed: () {
+              setState(() => _showAllJoined = !_showAllJoined);
             },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.grey[500],
+              overlayColor: Colors.transparent, // 👈 removes pink splash
+            ),
+            child: Text(
+              _showAllJoined ? "Weniger anzeigen" : "Mehr anzeigen",
+            ),
           ),
-        );
-      },
+      ]
     );
-  }
-
-  List<Post> get visibleRuns {
-    final runs = _selectedTab == 0 ? joinedRuns : hostedRuns;
-
-    if (_showAllRuns) return runs;
-
-    return runs.take(1).toList(); // 👈 only preview
   }
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(6),
+      padding: const EdgeInsets.fromLTRB(6, 6, 6, 26),
       children: [
         const SizedBox(height: 10),
         // 👥 SOCIAL PROOF (only meaningful if NOT me)
@@ -307,30 +419,21 @@ class _ProfileContentState extends State<ProfileContent> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                _buildTab("Joined", 0),
-                _buildTab("Hosted", 1),
-              ],
-            ),
-            GestureDetector(
-              onTap: () => setState(() => _showAllRuns = !_showAllRuns),
-              child: Text(
-                _showAllRuns ? "Weniger" : "Alle anzeigen",
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[700],
-                ),
-              ),
-            ),
+            _buildTopToggle(),
           ],
         ),
         const SizedBox(height: 4),
-        Column(
-          children: [
-            _buildRunsList(visibleRuns),
-          ],
-        ),
+
+        if (!showCreated)...[
+          if (_loadingRuns)
+            Column(
+              children: List.generate(2, (_) => const RunCardShimmer()),
+            )
+          else
+            _buildRunsList(joinedRuns, limit: _showAllJoined ? null : 2, showMore: joinedRuns.length > 2),
+        ] else ...[
+          _buildPastGrouped(grouped)
+        ]
 
         // // Show endorsements
         // const SizedBox(height: 30),
@@ -430,6 +533,7 @@ class ProfileHeader extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 50,
+                    backgroundColor: Colors.grey[300],
                     backgroundImage: NetworkImage(avatarUrl ?? "https://media.istockphoto.com/id/2221502929/de/vektor/flache-abbildung-in-graustufen-avatar-benutzerprofil-personensymbol-geschlechtsneutrale.jpg"),
                   ),
 
@@ -556,6 +660,10 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
   bool isRefreshing = false;
   int _togetherCount = 0;
   DateTime? _lastTogether;
+  bool get _profileReady =>
+    _profileName != null &&
+    _bio != null &&
+    _avatarUrl != null;
 
   Future<void> _refreshProfile() async {
     await fetchProfile();
@@ -574,7 +682,6 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
       );
 
       // Supabase returns a List
-      debugPrint("Fetched Result: $result");
       final data = (result as List).isNotEmpty ? result[0] : null;
 
       setState(() {
@@ -595,9 +702,6 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
     if (compressedImage == null) return;
     final path = '$userId.png'; // lowercase bucket name
 
-    final user = supabase.auth.currentUser;
-    debugPrint('User inf: $user');
-
     await supabase.storage.from('ProfileImages').upload(
       path,
       compressedImage,
@@ -605,10 +709,8 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
     );
     // Get public URL as string
     final url = supabase.storage.from('ProfileImages').getPublicUrl(path);
-    debugPrint("the url $url");
     // Save URL in profile table
     await supabase.from('profiles').update({'avatar_url': url}).eq('id', userId);
-    debugPrint('Test');
   }
 
   // fetch profile image when loading the page
@@ -624,7 +726,6 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
         _bio = response['bio'] as String?;
         _avatarUrl = response['avatar_url'] as String?;
         _profileName = response['username'] as String?;
-        debugPrint("Username $_profileName");
       });
     } catch (e) {
         debugPrint('Error fetching profile image: $e');
@@ -962,50 +1063,50 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
           ],
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: RefreshIndicator(
-          color: Colors.black,
-          backgroundColor: Colors.white,
-          strokeWidth: 2.0,
-          onRefresh: _refreshProfile,
-          child: Column(
-            children: [
-              ProfileHeader(
-                isMe: isMe,
-                avatarUrl: _avatarUrl,
-                name: _profileName,
-                bio: _bio,
-                onEditAvatar: () => _editAvatar(),
-                onEditBio: () => _editBio(),
-                togetherCount: _togetherCount,
-                lastTogether: _lastTogether,
-                onPrimaryAction: isMe ? () => _editBio() : () => _inviteUser(),
-              ),
-              if (!isMe)
-                SocialProofCard(
-                  togetherCount:_togetherCount,
-                  lastTogether: _lastTogether,
-                  username: "User",
-                ),
-
-              const SizedBox(height: 16),
-
-              Expanded(
-                child: ProfileContent(
+      body: _profileReady ?
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: RefreshIndicator(
+            color: Colors.black,
+            backgroundColor: Colors.white,
+            strokeWidth: 2.0,
+            onRefresh: _refreshProfile,
+            child: Column(
+              children: [
+                ProfileHeader(
                   isMe: isMe,
-                  profileId: widget.profileId,
+                  avatarUrl: _avatarUrl,
+                  name: _profileName,
+                  bio: _bio,
+                  onEditAvatar: () => _editAvatar(),
+                  onEditBio: () => _editBio(),
                   togetherCount: _togetherCount,
                   lastTogether: _lastTogether,
-                  endorsements: [
-                    {"text": "Great running partner!", "author": "Auren"},
-                    {"text": "Always on time and motivated", "author": "Chris"},
-                  ],
+                  onPrimaryAction: isMe ? () => _editBio() : () => _inviteUser(),
                 ),
-              ),
-            ],
-          )
-        ),
+                if (!isMe)
+                  SocialProofCard(
+                    togetherCount:_togetherCount,
+                    lastTogether: _lastTogether,
+                    username: "User",
+                  ),
+
+                const SizedBox(height: 16),
+
+                Expanded(
+                  child: ProfileContent(
+                    isMe: isMe,
+                    profileId: widget.profileId,
+                    togetherCount: _togetherCount,
+                    lastTogether: _lastTogether,
+                  ),
+                ),
+              ],
+            )
+          ),
+        )
+      : const Center(
+        child: CircularProgressIndicator(),
       )
     );
   }

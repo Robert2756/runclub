@@ -10,6 +10,7 @@ import 'dart:ui';
 import 'package:intl/intl.dart';
 import '../activity_page.dart';
 import '../models/post.dart';
+import 'package:shimmer/shimmer.dart';
 final supabase = Supabase.instance.client;
 
 class PostHistory extends StatefulWidget {
@@ -39,11 +40,13 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
     'https://i.pravatar.cc/40?img=9',
     'https://i.pravatar.cc/40?img=10'];
   final bullet = " •\u200B ";
+  bool _imageLoaded = false;
 
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
-  final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+  // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+  final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
 
   Future<void> fetchProfile() async {
     try {
@@ -123,36 +126,44 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
           ),
         ),
         children: [
-          TileLayer(
-            urlTemplate: mapUrl,
-            userAgentPackageName: 'com.robert.app',
-          ),
-          if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
-            MarkerLayer(
-              markers: [
-                if (widget.post.latitude != null && widget.post.longitude != null)
-                  Marker(
-                    point: LatLng(widget.post.latitude!, widget.post.longitude!),
-                    width: 42,
-                    height: 46,
-                    alignment: Alignment.topCenter,
-                    child: CustomPaint(
-                      painter: RunMarkerPainter(),
-                      child: const SizedBox(
-                        width: 42,
-                        height: 46,
-                        child: Center(
-                          child: Icon(
-                            Icons.directions_run,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+          // TileLayer(
+          //   urlTemplate: mapUrl,
+          //   userAgentPackageName: 'com.robert.app',
+          // ),
+          // if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
+            // MarkerLayer(
+            //   markers: [
+            //     if (widget.post.latitude != null && widget.post.longitude != null)
+            //       Marker(
+            //         point: LatLng(widget.post.latitude!, widget.post.longitude!),
+            //         width: 42,
+            //         height: 46,
+            //         alignment: Alignment.topCenter,
+            //           child: Container(
+            //             decoration: BoxDecoration(
+            //               color: Colors.white,
+            //               borderRadius: BorderRadius.circular(14),
+            //               boxShadow: [
+            //                 BoxShadow(
+            //                   color: Colors.black.withOpacity(0.18),
+            //                   blurRadius: 14,
+            //                   offset: const Offset(0, 6),
+            //                 ),
+            //               ],
+            //             ),
+            //             child: Center(
+            //               child: Icon(
+            //                 widget.post.activity == "Bike"
+            //                     ? Icons.directions_bike
+            //                     : Icons.directions_run,
+            //                 color: Colors.black,
+            //                 size: 18,
+            //               ),
+            //             ),
+            //           ),
+            //       ),
+            //   ],
+            // ),
         ],
       ),
     );
@@ -173,7 +184,7 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
   Widget build(BuildContext context) {
     super.build(context);
 
-    final isPast = widget.post.group != "Upcoming";
+    final isPast = false;
 
     return GestureDetector(
       onTap: () {
@@ -207,7 +218,39 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
                   width: 70,
                   height: 70,
                   child: widget.post.imgurl != null
-                      ? Image.network(widget.post.imgurl!, fit: BoxFit.cover)
+                      ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            widget.post.imgurl!,
+                            fit: BoxFit.cover,
+                            frameBuilder: (context, child, frame, wasSyncLoaded) {
+                              if (wasSyncLoaded || frame != null) {
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  if (mounted) {
+                                    setState(() => _imageLoaded = true);
+                                  }
+                                });
+                                return child;
+                              }
+
+                              return const SizedBox.shrink();
+                            },
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.grey.shade200,
+                              child: const Icon(Icons.image_not_supported_outlined),
+                            ),
+                          ),
+
+                          if (!_imageLoaded)
+                            Shimmer.fromColors(
+                              baseColor: Colors.grey.shade200,
+                              highlightColor: Colors.grey.shade100,
+                              period: const Duration(milliseconds: 1400),
+                              child: Container(color: Colors.grey.shade200),
+                            ),
+                        ],
+                      )
                       : _buildMap(initialZoom: 12),
                 ),
               ),
@@ -235,22 +278,31 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
 
                     // DATE
                     Text(
-                      "${DateFormat('EEE, d MMM', 'de_DE').format(DateTime.parse(widget.post.date!))}"
-                      "${widget.post.time != null ? " • ${widget.post.time!.substring(0,5)}" : ""}",
+                      widget.post.startsAt != null
+                          ? "${dataFormatter.formatActivityDate(
+                                DateTime.parse(widget.post.startsAt!),
+                              )} • ${dataFormatter.formatTime(
+                                DateTime.parse(widget.post.startsAt!),
+                              )} Uhr"
+                          : "—",
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.grey[600],
                       ),
                     ),
 
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
 
                     // META ROW
                     Row(
                       children: [
-                        _meta("${dataFormatter.formatDistance(widget.post.distance ?? 0)} km"),
-                        const SizedBox(width: 8),
-                        _meta(dataFormatter.formatPace(widget.post.pace ?? 0)),
+                        if(widget.post.distance != null) ...[
+                          _meta("${dataFormatter.formatDistance(widget.post.distance ?? 0)} km"),
+                        ],
+                        if(widget.post.pace != null) ...[
+                          const SizedBox(width: 8),
+                          _meta(dataFormatter.formatPace(widget.post.pace ?? 0)),
+                        ],
                         const Spacer(),
 
                         if (!isPast)
@@ -261,7 +313,7 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: const Text(
-                              "Joined",
+                              "Dabei",
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.white,
@@ -285,9 +337,8 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
     return Text(
       text,
       style: TextStyle(
-        fontSize: 12,
-        color: Colors.grey[700],
-        fontWeight: FontWeight.w500,
+        fontSize: 13,
+        color: Colors.grey[600],
       ),
     );
   }
