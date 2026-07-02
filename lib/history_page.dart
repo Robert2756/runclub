@@ -760,6 +760,38 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  Widget _buildSoftEmptyState({
+    required String title,
+    required String subtitle,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Text(
+          //   title,
+          //   style: TextStyle(
+          //     fontSize: 15,
+          //     fontWeight: FontWeight.w600,
+          //     color: Colors.grey.shade800,
+          //   ),
+          // ),
+          // const SizedBox(height: 4),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey.shade500,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_initialLoading) {
@@ -878,15 +910,22 @@ class _HistoryPageState extends State<HistoryPage> {
                   // _buildSectionTitle("Anstehend"),
                   ...upcomingRuns.skip(1).map((p) => PostHistory(post: p)),
                 ] else ...[
-                  const SizedBox(height: 32),
-                  _buildUpcomingEmptyCard(),
+                  const SizedBox(height: 12),
+                  _buildSoftEmptyState(
+                    title: "Keine anstehenden Events",
+                    subtitle: "Weitere anstehende Läufe erscheinen hier.",
+                  )
                 ]
               ] else ...[
                 if (grouped.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   _buildPastGrouped(grouped)
                 ] else ...[
-                  _buildHistoryFallback(),
+                  const SizedBox(height: 12),
+                  _buildSoftEmptyState(
+                    title: "Noch keine vergangenen Aktivitäten",
+                    subtitle: "Abgeschlossene Läufe werden hier gesammelt.",
+                  )
                 ]
               ]
             ]

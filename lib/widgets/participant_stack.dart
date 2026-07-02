@@ -29,7 +29,7 @@ Widget buildParticipantStack(List<String>? avatars, int avatarsLength) {
                                 avatars.length > i &&
                                 avatars[i].isNotEmpty
                             ? NetworkImage(avatars[i])
-                            : const AssetImage('assets/defaultAvatar.jpeg'),
+                            : null,
                   ),
                 ),
               if (remaining > 0)
