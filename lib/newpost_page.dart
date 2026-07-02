@@ -219,24 +219,30 @@ class _BasicSection extends StatelessWidget {
       children: [
         if (isBlockedByLimit)
           Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.red.withOpacity(0.3)),
+              color: const Color(0xFFFFF8E8),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: const Color(0xFFFFD66B),
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.info_outline, size: 18, color: Colors.red),
-                const SizedBox(width: 8),
+                const Icon(
+                  Icons.schedule_outlined,
+                  size: 18,
+                  color: Color(0xFF8A5A00),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    "Du hast bereits 2 aktive Aktivitäten. Upgrade auf RunClub Pro oder warte bis eine Aktivität endet.",
+                    "Du hast bereits 2 aktive Aktivitäten. Erstelle eine neue, sobald eine beendet ist.",
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.red.shade900,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6D4C00),
                     ),
                   ),
                 ),
@@ -1609,7 +1615,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
     if (!mounted) return;
 
     setState(() {
-      isBlockedByLimit = numberActivePosts >= 20;
+      isBlockedByLimit = numberActivePosts >= 2;
       isLimitLoading = false;
     });
   }

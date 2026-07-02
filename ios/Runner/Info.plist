@@ -69,8 +69,17 @@
 		<key>NSCalendarsUsageDescription</key>
 		<string>We need access to add this activity to your calendar.</string>
 		<key>UIStatusBarHidden</key>
-		<true/>
+		<false/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
+		<key>CFBundleURLTypes</key>
+		<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+			<string>com.enduvo.app</string>
+			</array>
+		</dict>
+		</array>
 	</dict>
 </plist>

@@ -3,11 +3,12 @@ import '../models/post.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
+final supabase = Supabase.instance.client;
 
-class RunCard extends StatelessWidget {
+class RunCard extends StatefulWidget {
   final Post post;
   final int? participantCount;
   final VoidCallback onTap;
@@ -19,8 +20,17 @@ class RunCard extends StatelessWidget {
     this.participantCount,
   });
 
+  @override
+  State<RunCard> createState() => _RunCardState();
+}
+
+class _RunCardState extends State<RunCard> {
+  bool _imageLoaded = false;
+
+  Post get post => widget.post;
+
   bool get isPast {
-    final dt = DateTime.tryParse("${post.date} ${post.time}") ?? DateTime.now();
+    final dt = DateTime.tryParse("${widget.post.date} ${post.time}") ?? DateTime.now();
     return dt.isBefore(DateTime.now());
   }
 
@@ -29,7 +39,7 @@ class RunCard extends StatelessWidget {
     final dateTime = DateTime.tryParse("${post.date} ${post.time}") ?? DateTime.now();
 
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 6),
         child: Container(
@@ -44,19 +54,47 @@ class RunCard extends StatelessWidget {
           child: Row(
             children: [
               // 🧭 VISUAL ANCHOR (image or map)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: post.imgurl != null
-                      ? Image.network(
-                          post.imgurl!,
-                          fit: BoxFit.cover,
-                        )
-                      : _buildMiniMap(),
-                ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                width: 64,
+                height: 64,
+                child: post.imgurl != null && post.imgurl!.isNotEmpty
+                    ? Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            post.imgurl!,
+                            fit: BoxFit.cover,
+
+                            loadingBuilder: (context, child, progress) {
+                              final isLoading = progress != null;
+
+                              return Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  child,
+
+                                  if (isLoading)
+                                    Shimmer.fromColors(
+                                      baseColor: Colors.grey.shade300,
+                                      highlightColor: Colors.grey.shade100,
+                                      child: Container(color: Colors.grey.shade300),
+                                    ),
+                                ],
+                              );
+                            },
+
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.grey.shade200,
+                              child: const Icon(Icons.image_not_supported_outlined),
+                            ),
+                          ),
+                        ],
+                      )
+                    : _buildMiniMap(),
               ),
+            ),
 
               const SizedBox(width: 12),
 
@@ -80,64 +118,25 @@ class RunCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        _statusChip(),
                       ],
-                    ),
-
-                    const SizedBox(height: 4),
-
-                    // LOCATION + DISTANCE
-                    Text(
-                      "${post.town ?? "Unknown"} • ${post.distance ?? "-"} km",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
                     ),
 
                     const SizedBox(height: 6),
 
-                    // META ROW
                     Row(
                       children: [
-                        // Text(
-                        //   DateFormat('EEE, HH:mm', 'de_DE').format(dateTime),
-                        //   style: TextStyle(
-                        //     fontSize: 12,
-                        //     color: Colors.grey[700],
-                        //   ),
-                        // ),
-
-                        const SizedBox(width: 8),
-
-                        if (participantCount != null)
-                          Text(
-                            "• $participantCount going",
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
+                        Text(
+                          post.town ?? "Unbekannter Ort",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[600],
                           ),
+                        ),
 
                         const Spacer(),
 
-                        // if (!isPast)
-                        //   Container(
-                        //     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        //     decoration: BoxDecoration(
-                        //       color: Colors.black,
-                        //       borderRadius: BorderRadius.circular(12),
-                        //     ),
-                        //     child: const Text(
-                        //       "Active",
-                        //       style: TextStyle(
-                        //         fontSize: 10,
-                        //         color: Colors.white,
-                        //         fontWeight: FontWeight.w600,
-                        //       ),
-                        //     ),
-                        //   ),
+                        if (post.creatorId == supabase.auth.currentUser!.id)
+                          _statusChip(),
                       ],
                     ),
                   ],
@@ -170,7 +169,7 @@ class RunCard extends StatelessWidget {
       children: [
         TileLayer(
           urlTemplate:
-              'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0',
+            'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0',
           userAgentPackageName: 'com.robert.app',
         ),
       ],
@@ -185,7 +184,7 @@ class RunCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
-        isPast ? "Vorbei" : "Geplant",
+        "Erstellt",
         style: TextStyle(
           fontSize: 10,
           color: isPast ? Colors.black87 : Colors.white,

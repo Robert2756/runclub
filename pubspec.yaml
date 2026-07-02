@@ -51,7 +51,7 @@ dependencies:
   gal: ^2.3.1
   device_calendar: ^4.3.0
   shimmer: ^3.0.0
-  flutter_launcher_icons: ^0.13.1
+  # flutter_launcher_icons: ^0.13.1
   flutter_localizations:
     sdk: flutter
 
@@ -60,6 +60,7 @@ dependencies:
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
+  flutter_launcher_icons: ^0.13.1
   flutter_native_splash: ^2.4.1
   flutter_test:
     sdk: flutter
@@ -83,7 +84,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/RUNCLUB.png
+    - assets/EnduvoLogo.png
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
@@ -117,9 +118,16 @@ flutter:
 
 flutter_native_splash:
   color: "#ffffff"
-  image: assets/RUNCLUB.png
+  image: assets/EnduvoLogo.png
+
   android: true
   ios: true
-  fullscreen: true
-  android_gravity: center
-  ios_content_mode: center
+
+  android_12:
+    color: "#ffffff"
+    image: assets/EnduvoLogo.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/EnduvoLogo.png

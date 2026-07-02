@@ -9,6 +9,7 @@ import 'widgets/run_card.dart';
 import 'activity_page.dart';
 import 'models/post.dart';
 import 'package:intl/intl.dart';
+import 'signin_page.dart';
 final imageService = ImageService();
 final supabase = Supabase.instance.client;
 
@@ -68,6 +69,7 @@ class _ProfileContentState extends State<ProfileContent> {
           posts (*)
         ''')
         .eq('user_id', userId)
+        .eq('status', 'joined')
         .gte('posts.starts_at', DateTime.now().toIso8601String());
 
       final joinedUpcomingResult = result
@@ -104,8 +106,10 @@ class _ProfileContentState extends State<ProfileContent> {
       // fetch months and years that need to be loaded for the creator activities
       final resultTimeStructure = await supabase
         .from('posts')
-        .select('starts_at, creator_id')
-        .eq('creator_id', userId);
+        .select('starts_at, activity_participants!inner(user_id)')
+        .eq('activity_participants.user_id', userId)
+        .eq('activity_participants.status', 'joined')
+        .lt('starts_at', DateTime.now().toIso8601String());
       
       Map<int, Set<int>> groupedCollect = {};
       for (final e in resultTimeStructure) {
@@ -142,8 +146,12 @@ class _ProfileContentState extends State<ProfileContent> {
 
     final result = await supabase
         .from('posts')
-        .select('*')
-        .eq('creator_id', userId)
+        .select('''
+          *,
+          activity_participants!inner(user_id)
+        ''')
+        .eq('activity_participants.user_id', userId)
+        .eq('activity_participants.status', 'joined')
         .gte('starts_at', start.toIso8601String())
         .lte('starts_at', end.toIso8601String());
 
@@ -181,7 +189,7 @@ class _ProfileContentState extends State<ProfileContent> {
         children: [
           _softToggle("Anstehend", !showCreated),
           const SizedBox(width: 16),
-          _softToggle("Erstellt", showCreated),
+          _softToggle("Vergangen", showCreated),
         ],
       ),
     );
@@ -190,7 +198,7 @@ class _ProfileContentState extends State<ProfileContent> {
   Widget _softToggle(String text, bool active) {
     return GestureDetector(
       onTap: () {
-        setState(() => showCreated = (text == "Erstellt"));
+        setState(() => showCreated = (text == "Vergangen"));
       },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -361,7 +369,7 @@ class _ProfileContentState extends State<ProfileContent> {
           itemCount: displayRuns.length,
           itemBuilder: (context, index) {
             final post = displayRuns[index];
-            final isLast = index == runs.length;
+            final isLast = index == runs.length - 1;
 
             return Padding(
               padding: EdgeInsets.only(bottom: isLast ? 6 : 0),
@@ -384,16 +392,22 @@ class _ProfileContentState extends State<ProfileContent> {
           },
         ),
         if (showMore)
-          TextButton(
-            onPressed: () {
-              setState(() => _showAllJoined = !_showAllJoined);
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.grey[500],
-              overlayColor: Colors.transparent, // 👈 removes pink splash
-            ),
-            child: Text(
-              _showAllJoined ? "Weniger anzeigen" : "Mehr anzeigen",
+          Padding(
+            padding: const EdgeInsets.only(top: 4), // 👈 move it up visually
+            child: TextButton(
+              onPressed: () {
+                setState(() => _showAllJoined = !_showAllJoined);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey[500],
+                overlayColor: Colors.transparent,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                minimumSize: Size.zero,
+                padding: const EdgeInsets.symmetric(vertical: 4),
+              ),
+              child: Text(
+                _showAllJoined ? "Weniger anzeigen" : "Mehr anzeigen",
+              ),
             ),
           ),
       ]
@@ -432,7 +446,10 @@ class _ProfileContentState extends State<ProfileContent> {
           else
             _buildRunsList(joinedRuns, limit: _showAllJoined ? null : 2, showMore: joinedRuns.length > 2),
         ] else ...[
-          _buildPastGrouped(grouped)
+          if (grouped.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildPastGrouped(grouped)
+          ],
         ]
 
         // // Show endorsements
@@ -495,22 +512,25 @@ class _ProfileContentState extends State<ProfileContent> {
 class ProfileHeader extends StatelessWidget {
   final bool isMe;
   final String? avatarUrl;
-  final String? name;
   final String? bio;
   final VoidCallback? onEditAvatar;
   final VoidCallback? onEditBio;
   final int? togetherCount;
   final DateTime? lastTogether;
   final VoidCallback onPrimaryAction;
-  final int age = 24;
+  final int? age;
+  final String? userName;
+  final String? fullName;
 
   const ProfileHeader({
     required this.isMe,
     this.avatarUrl,
-    this.name,
     this.bio,
+    this.age,
     this.onEditAvatar,
     this.onEditBio,
+    required this.fullName,
+    required this.userName,
     required this.togetherCount,
     required this.lastTogether,
     required this.onPrimaryAction,
@@ -556,27 +576,45 @@ class ProfileHeader extends StatelessWidget {
               const SizedBox(width: 16),
 
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(name ?? "Benutzername", 
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                        if (age != null) ...[
-                          SizedBox(width: 6),
+                child:
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
                           Text(
-                            "$age",
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey[600],
+                            fullName ?? "Nutzer",
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
+                          if (age != null) ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              "$age",
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[500],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                  ]
-                )
+                      ),
+
+                      const SizedBox(height: 2),
+
+                      Text(
+                        "@$userName",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[500],
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  )
               ),
             ]
           ),
@@ -606,11 +644,12 @@ class ProfileHeader extends StatelessWidget {
           if (!isMe)
             OutlinedButton(
               onPressed: onPrimaryAction,
-              child: const Text("Einladen"),
               style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.black, // Text (and icon) color
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                minimumSize: Size(0, 32),
+                minimumSize: const Size(0, 32),
               ),
+              child: const Text("Einladen"),
             ),
 
           const SizedBox(height: 12),
@@ -638,6 +677,60 @@ class ProfileHeader extends StatelessWidget {
   }
 }
 
+class _ModernField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final int maxLength;
+  final int maxLines;
+  final TextInputType? keyboardType;
+  final String? errorText;
+  final Function(String)? onChanged;
+
+  const _ModernField({
+    required this.label,
+    required this.controller,
+    this.maxLength = 30,
+    this.maxLines = 1,
+    this.keyboardType,
+    this.errorText,
+    this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      maxLength: maxLength,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        errorText: errorText,
+        counterText: "",
+        filled: true,
+        fillColor: Colors.grey[50],
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.grey.shade200),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Colors.black),
+        ),
+      ),
+    );
+  }
+}
+
 class ProfilePage extends StatefulWidget {
   final String profileId;
 
@@ -651,7 +744,9 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> with RouteAware {
   String? _avatarUrl;
-  String? _profileName;
+  int? _age;
+  String? _fullName;
+  String? _userName;
   File? _profileImage;
   final supabase = Supabase.instance.client;
   bool get isMe => widget.profileId == supabase.auth.currentUser!.id;
@@ -660,10 +755,9 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
   bool isRefreshing = false;
   int _togetherCount = 0;
   DateTime? _lastTogether;
+  bool _loadingProfile = false;
   bool get _profileReady =>
-    _profileName != null &&
-    _bio != null &&
-    _avatarUrl != null;
+    _userName != null;
 
   Future<void> _refreshProfile() async {
     await fetchProfile();
@@ -715,20 +809,28 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
 
   // fetch profile image when loading the page
   Future<void> fetchProfile() async {
+    if (_loadingProfile) return;
+    _loadingProfile = true;
     try {
       final response = await supabase
           .from('profiles')
-          .select('avatar_url, username, bio')
+          .select('avatar_url, username, bio, age, full_name')
           .eq('id', widget.profileId)
           .single(); // fetch single row
+
+      if (!mounted) return;
 
       setState(() {
         _bio = response['bio'] as String?;
         _avatarUrl = response['avatar_url'] as String?;
-        _profileName = response['username'] as String?;
+        _userName = response['username'] as String?;
+        _age = response['age'] as int?;
+        _fullName = response['full_name'] as String?;
       });
     } catch (e) {
         debugPrint('Error fetching profile image: $e');
+    } finally {
+      _loadingProfile = false;
     }
   }
 
@@ -775,92 +877,189 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
     });
   }
 
-  void _editBio() async {
-    final controller = TextEditingController(text: _bio ?? "");
+  void _editProfile() async {
+    final nameController = TextEditingController(text: _fullName ?? "");
+    final usernameController = TextEditingController(text: _userName ?? "");
+    final bioController = TextEditingController(text: _bio ?? "");
+    final ageController = TextEditingController(
+      text: _age?.toString() ?? "",
+    );
 
-    final result = await showModalBottomSheet<String>(
+    String? usernameError;
+
+    Future<bool> checkUsernameAvailable(String username) async {
+      if (username.isEmpty) return false;
+
+      final res = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('username', username)
+          .neq('id', widget.profileId);
+
+      return (res as List).isEmpty;
+    }
+
+    final result = await showGeneralDialog<Map<String, dynamic>>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle bar (tiny UX detail, big impact)
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
+      barrierDismissible: true,
+      barrierLabel: "Edit Profile",
+      barrierColor: Colors.black.withOpacity(0.35),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (context, anim1, anim2) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Center(
+                child: Material(
+                  color: Colors.transparent,
+                  child: AnimatedPadding(
+                    duration: const Duration(milliseconds: 200),
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).viewInsets.bottom,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Container(
+                        width: MediaQuery.of(context).size.width * 0.92,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              "Profil bearbeiten",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
 
-              const Text(
-                "Edit bio",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
+                            const SizedBox(height: 20),
 
-              const SizedBox(height: 12),
+                            // NAME
+                            _ModernField(
+                              label: "Name",
+                              controller: nameController,
+                              maxLength: 30,
+                            ),
 
-              TextField(
-                controller: controller,
-                maxLines: 3,
-                maxLength: 120,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: "Tell something about yourself...",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
+                            const SizedBox(height: 14),
 
-              const SizedBox(height: 12),
+                            // AGE
+                            _ModernField(
+                              label: "Alter",
+                              controller: ageController,
+                              maxLength: 3,
+                              keyboardType: TextInputType.number,
+                            ),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text("Cancel"),
+                            const SizedBox(height: 14),
+
+                            // USERNAME + uniqueness check
+                            _ModernField(
+                              label: "Username",
+                              controller: usernameController,
+                              maxLength: 20,
+                              errorText: usernameError,
+                              onChanged: (val) async {
+                                final available = await checkUsernameAvailable(val);
+
+                                setModalState(() {
+                                  usernameError = available || val.isEmpty
+                                      ? null
+                                      : "Username already taken";
+                                });
+                              },
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            // BIO
+                            _ModernField(
+                              label: "Bio",
+                              controller: bioController,
+                              maxLength: 120,
+                              maxLines: 3,
+                            ),
+
+                            const SizedBox(height: 22),
+
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text(
+                                      "Abbrechen",
+                                      style: TextStyle(
+                                        color: Color.fromARGB(255, 0, 0, 0),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: usernameError != null
+                                        ? null
+                                        : () {
+                                            Navigator.pop(context, {
+                                              "name": nameController.text.trim(),
+                                              "username": usernameController.text.trim(),
+                                              "bio": bioController.text.trim(),
+                                              "age": int.tryParse(ageController.text.trim()),
+                                            });
+                                          },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.black,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                    child: const Text("Speichern"),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context, controller.text.trim());
-                      },
-                      child: const Text("Save"),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ],
+            );
+          },
+        );
+      },
+      transitionBuilder: (context, anim, _, child) {
+        return FadeTransition(
+          opacity: anim,
+          child: ScaleTransition(
+            scale: Tween(begin: 0.96, end: 1.0).animate(anim),
+            child: child,
           ),
         );
       },
     );
 
     if (result != null) {
-      await supabase
-          .from('profiles')
-          .update({'bio': result})
-          .eq('id', widget.profileId);
+      debugPrint("Result: $result");
+      await supabase.from('profiles').update({
+        'full_name': result["name"],
+        'username': result["username"],
+        'bio': result["bio"],
+        'age': result["age"],
+      }).eq('id', widget.profileId);
 
       setState(() {
-        _bio = result;
+        _fullName = result["name"];
+        _userName = result["username"];
+        _bio = result["bio"];
+        _age = result["age"];
       });
     }
   }
@@ -976,7 +1175,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                   ),
 
                   const Text(
-                    "Zu welchem Run einladen?",
+                    "Zu welcher deiner Aktivitäten einladen?",
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
 
@@ -999,7 +1198,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                           margin: const EdgeInsets.only(bottom: 8),
                           child: ListTile(
                             title: Text(
-                              run.title ?? "Run",
+                              run.title,
                               style: const TextStyle(fontSize: 16),
                             ),
                             subtitle: Text(
@@ -1017,7 +1216,9 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                               ),
                               child: const Text(
                                 "Einladen",
-                                style: TextStyle(fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w600),
                               ),
                             ),
                           ),
@@ -1046,20 +1247,29 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
               icon: const Icon(Icons.logout),
               onPressed: () async {
                 await supabase.auth.signOut();
-              },
-            ),
-            IconButton(
-              tooltip: 'Settings',
-              icon: const Icon(Icons.settings),
-              onPressed: () {
-                Navigator.push(
-                  context,
+
+                if(!context.mounted) return;
+
+                Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(
-                    builder: (_) => const SettingsPage(title: "Settings"),
+                    builder: (_) => const SignInPage(),
                   ),
+                  (route) => false,
                 );
               },
             ),
+            // IconButton(
+            //   tooltip: 'Settings',
+            //   icon: const Icon(Icons.settings),
+            //   onPressed: () {
+            //     Navigator.push(
+            //       context,
+            //       MaterialPageRoute(
+            //         builder: (_) => const SettingsPage(title: "Settings"),
+            //       ),
+            //     );
+            //   },
+            // ),
           ],
         ],
       ),
@@ -1076,13 +1286,15 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                 ProfileHeader(
                   isMe: isMe,
                   avatarUrl: _avatarUrl,
-                  name: _profileName,
+                  fullName: _fullName,
+                  userName: _userName,
                   bio: _bio,
                   onEditAvatar: () => _editAvatar(),
-                  onEditBio: () => _editBio(),
+                  onEditBio: () => _editProfile(),
                   togetherCount: _togetherCount,
                   lastTogether: _lastTogether,
-                  onPrimaryAction: isMe ? () => _editBio() : () => _inviteUser(),
+                  onPrimaryAction: isMe ? () => _editProfile() : () => _inviteUser(),
+                  age: _age,
                 ),
                 if (!isMe)
                   SocialProofCard(

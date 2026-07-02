@@ -482,41 +482,54 @@ class FeedPageState extends State<FeedPage> {
                     if (index < posts.length) {
                       final post = posts[index];
                       return Padding(
-                        padding: const EdgeInsets.only(bottom: 34),
-                        child: RepaintBoundary(
-                          child: PostCard(
-                            key: ValueKey(post['id'].toString()),
-                            post: Post(
-                              id: post['id'].toString(),
-                              title: post['title'],
-                              creatorId: post['creator_id'],
-                              imgurl: post['image_url'],
-                              description: post['description'],
-                              activity: post['activity'],
-                              distance: post['distance'],
-                              pace: post['pace'],
-                              date: post['date'],
-                              time: post['time'],
-                              latitude: post['latitude'],
-                              longitude: post['longitude'],
-                              town: post['town'],
-                              createdAt: post['created_at'],
-                              userdistance: post['user_distance'],
-                              startsAt: post['starts_at'],
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Column(
+                          children: [
+                            RepaintBoundary(
+                              child: PostCard(
+                                key: ValueKey(post['id'].toString()),
+                                post: Post(
+                                  id: post['id'].toString(),
+                                  title: post['title'],
+                                  creatorId: post['creator_id'],
+                                  imgurl: post['image_url'],
+                                  description: post['description'],
+                                  activity: post['activity'],
+                                  distance: post['distance'],
+                                  pace: post['pace'],
+                                  date: post['date'],
+                                  time: post['time'],
+                                  latitude: post['latitude'],
+                                  longitude: post['longitude'],
+                                  town: post['town'],
+                                  createdAt: post['created_at'],
+                                  userdistance: post['user_distance'],
+                                  startsAt: post['starts_at'],
+                                ),
+                                usernameCreator: post['username'],
+                                avatarUrlCreator: post['avatar_url'],
+                                participantIds: post["participant_ids"],
+                                showImageMain: showImageMap[post['id'].toString()] ?? true,
+                                onToggle: (val) {
+                                  setState(() {
+                                    showImageMap[post['id'].toString()] = val;
+                                  });
+                                },
+                                onPostDeleted: (id) async{
+                                  await _refreshFeed();
+                                },
+                              ),
                             ),
-                            usernameCreator: post['username'],
-                            avatarUrlCreator: post['avatar_url'],
-                            participantIds: post["participant_ids"],
-                            showImageMain: showImageMap[post['id'].toString()] ?? true,
-                            onToggle: (val) {
-                              setState(() {
-                                showImageMap[post['id'].toString()] = val;
-                              });
-                            },
-                            onPostDeleted: (id) async{
-                              await _refreshFeed();
-                            },
-                          ),
+                            const SizedBox(height: 14),
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 16),
+                              child: Divider(
+                                height: 1,
+                                thickness: 1,
+                                color: Color(0x0A000000),
+                              ),
+                            ),
+                          ],
                         )
                       );
                     }

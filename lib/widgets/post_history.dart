@@ -48,6 +48,11 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
 
+  bool get isPast {
+    final dt = DateTime.tryParse("${widget.post.date} ${widget.post.time}") ?? DateTime.now();
+    return dt.isBefore(DateTime.now());
+  }
+
   Future<void> fetchProfile() async {
     try {
       final response = await supabase
@@ -184,8 +189,6 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
   Widget build(BuildContext context) {
     super.build(context);
 
-    final isPast = false;
-
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -203,10 +206,10 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: isPast ? Colors.grey[100] : Colors.white,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: isPast ? Colors.grey.shade300 : Colors.grey.shade200,
+              color: Colors.grey.shade200,
             ),
           ),
           child: Row(
@@ -224,17 +227,34 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
                           Image.network(
                             widget.post.imgurl!,
                             fit: BoxFit.cover,
-                            frameBuilder: (context, child, frame, wasSyncLoaded) {
-                              if (wasSyncLoaded || frame != null) {
-                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                  if (mounted) {
-                                    setState(() => _imageLoaded = true);
-                                  }
-                                });
-                                return child;
-                              }
+                            // frameBuilder: (context, child, frame, wasSyncLoaded) {
+                            //   if (wasSyncLoaded || frame != null) {
+                            //     WidgetsBinding.instance.addPostFrameCallback((_) {
+                            //       if (mounted) {
+                            //         setState(() => _imageLoaded = true);
+                            //       }
+                            //     });
+                            //     return child;
+                            //   }
 
-                              return const SizedBox.shrink();
+                            //   return const SizedBox.shrink();
+                            // },
+                            loadingBuilder: (context, child, progress) {
+                              final isLoading = progress != null;
+
+                              return Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  child,
+
+                                  if (isLoading)
+                                    Shimmer.fromColors(
+                                      baseColor: Colors.grey.shade300,
+                                      highlightColor: Colors.grey.shade100,
+                                      child: Container(color: Colors.grey.shade300),
+                                    ),
+                                ],
+                              );
                             },
                             errorBuilder: (_, __, ___) => Container(
                               color: Colors.grey.shade200,
@@ -242,13 +262,13 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
                             ),
                           ),
 
-                          if (!_imageLoaded)
-                            Shimmer.fromColors(
-                              baseColor: Colors.grey.shade200,
-                              highlightColor: Colors.grey.shade100,
-                              period: const Duration(milliseconds: 1400),
-                              child: Container(color: Colors.grey.shade200),
-                            ),
+                          // if (!_imageLoaded)
+                          //   Shimmer.fromColors(
+                          //     baseColor: Colors.grey.shade200,
+                          //     highlightColor: Colors.grey.shade100,
+                          //     period: const Duration(milliseconds: 1400),
+                          //     child: Container(color: Colors.grey.shade200),
+                          //   ),
                         ],
                       )
                       : _buildMap(initialZoom: 12),
@@ -305,18 +325,18 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
                         ],
                         const Spacer(),
 
-                        if (!isPast)
+                        if (widget.post.creatorId == supabase.auth.currentUser!.id)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.black,
+                              color: isPast ? Colors.grey.shade200 : Colors.black,
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Text(
-                              "Dabei",
+                            child: Text(
+                              "Erstellt",
                               style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.white,
+                                fontSize: 10,
+                                color: isPast ? Colors.black87 : Colors.white,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),

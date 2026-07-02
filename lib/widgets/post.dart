@@ -14,16 +14,33 @@ import '../activity_page.dart';
 import 'post_placeholder.dart';
 import '../services/data_formatter.dart';
 import 'package:shimmer/shimmer.dart';
+import 'user_avatar.dart';
 
 final supabase = Supabase.instance.client;
 final dataFormatter = DataFormatter();
+
+class _ShimmerPlaceholder extends StatelessWidget {
+  const _ShimmerPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey.shade200,
+        highlightColor: Colors.grey.shade100,
+        period: const Duration(milliseconds: 1400),
+        child: Container(color: Colors.grey.shade200),
+      ),
+    );
+  }
+}
 
 class PostCard extends StatefulWidget {
   final Post post;
   final bool showImageMain;
   final ValueChanged<bool> onToggle; // parent is rebuild when calling 
   final String usernameCreator;
-  final String avatarUrlCreator;
+  final String? avatarUrlCreator;
   final List participantIds;
   final void Function(String postId)? onPostDeleted;
 
@@ -56,12 +73,23 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   bool isReady = false;
   final bullet = " •\u200B ";
   bool _imageLoaded = false;
+  // List<String> participantUsernames = [];
   
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    precacheImage(
+      NetworkImage(widget.post.imgurl!),
+      context,
+    );
+  }
 
   @override
   void didUpdateWidget(covariant PostCard oldWidget) {
@@ -88,12 +116,16 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
       if (widget.participantIds.isNotEmpty) {
         final avatarRes = await supabase
             .from('profiles')
-            .select('avatar_url')
+            .select('avatar_url, username')
             .filter('id', 'in', widget.participantIds);
 
         avatars = (avatarRes as List)
             .map((a) => a['avatar_url'] as String)
             .toList();
+        
+        // participantUsernames = (avatarRes as List)
+        //     .map((a) => a['username'] as String)
+        //     .toList();
       }
 
       setState(() {
@@ -103,6 +135,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
         ];
         _joined = joinedRes != null;
         isReady = true;
+        // participantUsernames = participantUsernames;
       });
 
     } catch (e) {
@@ -239,83 +272,97 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   }
 
   Widget _buildImage() {
+    return AspectRatio(
+      aspectRatio: 1 / 1,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(0),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              widget.post.imgurl!,
+              fit: BoxFit.cover,
+              cacheWidth: (MediaQuery.of(context).size.width *
+                      MediaQuery.of(context).devicePixelRatio)
+                  .round(),
+              filterQuality: FilterQuality.low,
+              gaplessPlayback: true,
+              loadingBuilder: (context, child, progress) {
+                final loading = progress != null;
+
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    child,
+
+                    if (loading)
+                      const _ShimmerPlaceholder(),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Widget _buildImage() {
   //   return AspectRatio(
   //     aspectRatio: 1 / 1,
-  //     child: Container(
-  //       color: Colors.grey.shade200, // fallback background
-  //       child: Image.network(
-  //         widget.post.imgurl!,
-  //         fit: BoxFit.cover,
+  //     child: Stack(
+  //       fit: StackFit.expand,
+  //       children: [
+  //         // Image.network(
+  //         //   widget.post.imgurl!,
+  //         //   fit: BoxFit.cover,
+  //         //   cacheWidth: (MediaQuery.of(context).size.width *
+  //         //     MediaQuery.of(context).devicePixelRatio).round(),
+  //         //   frameBuilder: (context, child, frame, wasSyncLoaded) {
+  //         //     if (wasSyncLoaded || frame != null) {
+  //         //       WidgetsBinding.instance.addPostFrameCallback((_) {
+  //         //         if (mounted) {
+  //         //           setState(() => _imageLoaded = true);
+  //         //         }
+  //         //       });
+  //         //       return child;
+  //         //     }
 
-  //         // while loading
-  //         loadingBuilder: (context, child, loadingProgress) {
-  //           if (loadingProgress == null) return child;
+  //         //     return const SizedBox.shrink();
+  //         //   },
+  //         //   errorBuilder: (_, __, ___) => Container(
+  //         //     color: Colors.grey.shade200,
+  //         //     child: const Icon(Icons.image_not_supported_outlined),
+  //         //   ),
+  //         // ),
+  //         Image.network(
+  //           widget.post.imgurl!,
+  //           fit: BoxFit.cover,
+  //           cacheWidth: (MediaQuery.of(context).size.width *
+  //                   MediaQuery.of(context).devicePixelRatio)
+  //               .round(),
+  //           filterQuality: FilterQuality.low,
+  //         ),
 
-  //           return Shimmer.fromColors(
-  //             baseColor: Colors.grey.shade200,
-  //             highlightColor: Colors.grey.shade50,
-  //             period: const Duration(milliseconds: 1400),
-  //             child: SizedBox.expand(
-  //               child: Container(
-  //                 decoration: BoxDecoration(
-  //                   color: Colors.grey.shade300,
-  //                 ),
-  //               ),
-  //             ),
-  //           );
-  //         },
-
-  //         // when it fails
-  //         errorBuilder: (context, error, stackTrace) {
-  //           return Container(
-  //             color: Colors.grey.shade200,
-  //             child: const Center(
-  //               child: Icon(
-  //                 Icons.image_not_supported_outlined,
-  //                 size: 32,
-  //                 color: Colors.grey,
-  //               ),
-  //             ),
-  //           );
-  //         },
-  //       ),
+  //         // if (!_imageLoaded)
+  //         //   Shimmer.fromColors(
+  //         //     baseColor: Colors.grey.shade200,
+  //         //     highlightColor: Colors.grey.shade100,
+  //         //     period: const Duration(milliseconds: 1400),
+  //         //     child: Container(color: Colors.grey.shade200),
+  //         //   ),
+  //       ],
   //     ),
   //   );
   // }
-    return AspectRatio(
-      aspectRatio: 1 / 1,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.network(
-            widget.post.imgurl!,
-            fit: BoxFit.cover,
-            frameBuilder: (context, child, frame, wasSyncLoaded) {
-              if (wasSyncLoaded || frame != null) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    setState(() => _imageLoaded = true);
-                  }
-                });
-                return child;
-              }
 
-              return const SizedBox.shrink();
-            },
-            errorBuilder: (_, __, ___) => Container(
-              color: Colors.grey.shade200,
-              child: const Icon(Icons.image_not_supported_outlined),
-            ),
-          ),
-
-          if (!_imageLoaded)
-            Shimmer.fromColors(
-              baseColor: Colors.grey.shade200,
-              highlightColor: Colors.grey.shade100,
-              period: const Duration(milliseconds: 1400),
-              child: Container(color: Colors.grey.shade200),
-            ),
-        ],
+  Widget buildShimmer() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey.shade300,
+      highlightColor: Colors.grey.shade100,
+      period: const Duration(milliseconds: 1200),
+      child: Container(
+        color: Colors.grey.shade300,
       ),
     );
   }
@@ -362,6 +409,23 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     //   await fetchParticipantAvatars();
     //   widget.onPostDeleted?.call(widget.post.id);
     // }
+  }
+
+  Color avatarColor(String userId) {
+    const colors = [
+      Color(0xFFE57373),
+      Color(0xFF64B5F6),
+      Color(0xFF81C784),
+      Color(0xFFFFB74D),
+      Color(0xFFBA68C8),
+      Color(0xFF4DB6AC),
+      Color(0xFFA1887F),
+      Color(0xFF7986CB),
+      Color(0xFFFF8A65),
+      Color(0xFF90A4AE),
+    ];
+
+    return colors[userId.hashCode.abs() % colors.length];
   }
 
   // initial fetch when page is first opened
@@ -413,10 +477,11 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                             ),
                           );
                         },
-                        child: CircleAvatar(
+                        child: UserAvatar(
+                          imageUrl: widget.avatarUrlCreator,
+                          name: widget.usernameCreator,
+                          userId: widget.post.creatorId,
                           radius: 20,
-                          backgroundColor: Colors.grey[300],
-                          backgroundImage: NetworkImage(widget.avatarUrlCreator)
                         ),
                       ),
                         const SizedBox(width: 8),
@@ -426,7 +491,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                             Text(
                               widget.usernameCreator,
                               style: theme.textTheme.titleMedium?.copyWith(
-                                fontSize: 17,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -552,56 +617,57 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                   ),
                 ],
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: widget.post.imgurl != null
-                    ? Stack(
-                        children: [
-                          // Main media
-                          widget.showImageMain
-                            ? _buildImage()
-                            : _buildMap(), 
-                          // Small floating preview
-                          Positioned(
-                            bottom: 14,
-                            left: 14,
-                            child: GestureDetector(
-                              onTap: () {
-                                widget.onToggle(!widget.showImageMain);
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.all(3),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.9),
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(15),
-                                  child: SizedBox(
-                                    width: 76,
-                                    height: 76,
-                                    child: widget.showImageMain
-                                        ? IgnorePointer(
-                                            child: _buildMap(
-                                              initialZoom: 10,
-                                              showMarker: false,
+              child: RepaintBoundary(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(22),
+                  child: widget.post.imgurl != null
+                      ? Stack(
+                          children: [
+                            // Main media
+                            widget.showImageMain
+                              ? _buildImage()
+                              : _buildMap(), 
+                            // Small floating preview
+                            Positioned(
+                              bottom: 14,
+                              left: 14,
+                              child: GestureDetector(
+                                onTap: () {
+                                  widget.onToggle(!widget.showImageMain);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.9),
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(15),
+                                    child: SizedBox(
+                                      width: 76,
+                                      height: 76,
+                                      child: widget.showImageMain
+                                          ? IgnorePointer(
+                                              child: _buildMap(
+                                                initialZoom: 10,
+                                                showMarker: false,
+                                              ),
+                                            )
+                                          : Image.network(
+                                              widget.post.imgurl!,
+                                              fit: BoxFit.cover,
                                             ),
-                                          )
-                                        : Image.network(
-                                            widget.post.imgurl!,
-                                            fit: BoxFit.cover,
-                                          ),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      )
-
-                    // No image -> only map
-                    : _buildMap(),
-              ),
+                          ],
+                        )
+                      // No image -> only map
+                      : _buildMap(),
+                ),
+              )
             ),
           ),
           const SizedBox(height: 8),

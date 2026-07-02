@@ -11,7 +11,7 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(56);
+  Size get preferredSize => const Size.fromHeight(58);
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +19,14 @@ class AppAppBar extends StatelessWidget implements PreferredSizeWidget {
       title: title,
       centerTitle: false,
       actions: actions,
+      bottom: const PreferredSize(
+        preferredSize: Size.fromHeight(1),
+        child: Divider(
+          height: 1,
+          thickness: 1,
+          color: Color(0x0A000000),
+        ),
+      ),
     );
   }
 }

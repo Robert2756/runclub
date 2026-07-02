@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'activity_page.dart';
 import 'dart:ui';
+import 'package:shimmer/shimmer.dart';
 
 final supabase = Supabase.instance.client;
 final imageService = ImageService();
@@ -34,6 +35,8 @@ class _HistoryPageState extends State<HistoryPage> {
   Map<String, List<Post>> monthPosts = {};
   Map<String, bool> monthLoaded = {};
   Map<String, bool> monthLoading = {};
+  bool _initialLoading = true;
+  bool _nextRunCardLoaded = false;
 
   Widget _buildSectionTitle(String title) {
     return Padding(
@@ -49,6 +52,9 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> fetchPosts({bool loadMore = false}) async {
+    setState(() {
+      _initialLoading = true;
+    });
     final userId = supabase.auth.currentUser!.id;
 
     try {
@@ -59,6 +65,7 @@ class _HistoryPageState extends State<HistoryPage> {
           posts (*)
         ''')
         .eq('user_id', userId)
+        .eq('status', 'joined')
         .gte('posts.starts_at', DateTime.now().toIso8601String());
 
       final joinedUpcomingResult = result
@@ -97,6 +104,7 @@ class _HistoryPageState extends State<HistoryPage> {
         .from('posts')
         .select('starts_at, activity_participants!inner(user_id)')
         .eq('activity_participants.user_id', userId)
+        .eq('activity_participants.status', 'joined')
         .lt('starts_at', DateTime.now().toIso8601String());
       
       Map<int, Set<int>> groupedCollect = {};
@@ -116,6 +124,10 @@ class _HistoryPageState extends State<HistoryPage> {
 
     } catch (e) {
       debugPrint('Error fetching posts: $e');
+    } finally {
+      setState(() {
+        _initialLoading = false;
+      });
     }
   }
 
@@ -140,6 +152,7 @@ class _HistoryPageState extends State<HistoryPage> {
           activity_participants!inner(user_id)
         ''')
         .eq('activity_participants.user_id', userId)
+        .eq('activity_participants.status', 'joined')
         .gte('starts_at', start.toIso8601String())
         .lte('starts_at', end.toIso8601String());
 
@@ -328,7 +341,7 @@ class _HistoryPageState extends State<HistoryPage> {
                             children: (monthPosts[key] ?? [])
                                 .map(
                                   (p) => Opacity(
-                                    opacity: 0.75,
+                                    opacity: 1,
                                     child: PostHistory(post: p),
                                   ),
                                 )
@@ -342,6 +355,24 @@ class _HistoryPageState extends State<HistoryPage> {
           ],
         );
       }).toList(),
+    );
+  }
+
+  Widget buildShimmer(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey.shade200,
+        highlightColor: Colors.grey.shade100,
+        period: const Duration(milliseconds: 1400),
+        child: Container(
+          height: 210,
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200, // Colors.white,
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+      ),
     );
   }
 
@@ -381,7 +412,17 @@ class _HistoryPageState extends State<HistoryPage> {
                     child: Image.network(
                       post.imgurl!,
                       fit: BoxFit.cover,
-                    ),
+                      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                        if (wasSynchronouslyLoaded || frame != null) {
+                          return child;
+                        }
+                        return Shimmer.fromColors(
+                          baseColor: Colors.grey.shade200,
+                          highlightColor: Colors.grey.shade100,
+                          child: Container(color: Colors.grey.shade200),
+                        );
+                      },
+                    )
                   ),
                 ),
               ),
@@ -545,8 +586,190 @@ class _HistoryPageState extends State<HistoryPage> {
     _initUserLocation();
   }
 
+  Widget _buildJoinMoreEventsCard() {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Container(
+        height: 140,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.grey.shade100,
+              Colors.white,
+            ],
+          ),
+        ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.event_repeat_rounded,
+                  color: Colors.grey.shade800,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  "Tritt weiteren Events bei",
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  "Du hast schon einen Lauf – entdecke mehr in deiner Nähe.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUpcomingEmptyCard() {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Container(
+        height: 140,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: Colors.grey.shade50,
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  "Weitere anstehende Events erscheinen hier",
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryFallback() {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Container(
+        height: 140,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.grey.shade100,
+              Colors.white,
+            ],
+          ),
+          border: Border.all(
+            color: Colors.grey.shade200,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            // subtle background shape
+            Positioned(
+              top: -40,
+              right: -30,
+              child: Container(
+                width: 140,
+                height: 140,
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.03),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(
+                        color: Colors.grey.shade300,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.06),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.history_rounded,
+                      size: 26,
+                      color: Colors.grey.shade800,
+                    ),
+                  ),
+
+                  const SizedBox(width: 14),
+
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          "Noch keine Aktivitäten",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          "Deine abgeschlossenen Läufe erscheinen hier zur Übersicht.",
+                          style: TextStyle(
+                            color: Colors.grey.shade700,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_initialLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     return Scaffold(
       body: RefreshIndicator(
         color: Colors.black,
@@ -556,41 +779,117 @@ class _HistoryPageState extends State<HistoryPage> {
           ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             children: [
-              if (nextRun != null && upcomingRuns.isEmpty) ...[
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
+              if (nextRun != null) ...[
+                _buildNextRun(nextRun!),
+                const SizedBox(height: 12),
+              ] else ...[
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Container(
+                    height: 210,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Stack(
                       children: [
-                        Icon(Icons.directions_run, size: 48, color: Colors.grey),
-                        const SizedBox(height: 12),
-                        const Text("Keine anstehenden Läufe"),
-                        const SizedBox(height: 6),
-                        const Text("Tritt einem Lauf über dein Feed bei"),
+                        // Background
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.grey.shade100,
+                                  Colors.white,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Content (same structure as _buildNextRun)
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const SizedBox(height: 8),
+
+                              Container(
+                                width: 64,
+                                height: 64,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(0.9),
+                                  border: Border.all(
+                                    color: Colors.grey.shade300,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  Icons.history_outlined,
+                                  size: 30,
+                                  color: Colors.grey.shade800,
+                                ),
+                              ),
+
+                              const SizedBox(height: 18),
+
+                              const Text(
+                                "Keine anstehenden Events",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black,
+                                ),
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              Text(
+                                "Tritt einem Lauf oder einer Radtour bei und dein nächstes Event erscheint hier.",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.grey.shade700,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
-              ] else ...[
-                if (nextRun != null) ...[
-                  _buildNextRun(nextRun!),
-                  const SizedBox(height: 12),
-                ],
-                _buildTopToggle(),
+                const SizedBox(height: 12),
+              ],
+              _buildTopToggle(),
 
-                if (!showPast)...[
-                  if (upcomingRuns.length > 1) ...[
-                    // _buildSectionTitle("Anstehend"),
-                    ...upcomingRuns.skip(1).map((p) => PostHistory(post: p)),
-                  ],
+              if (!showPast)...[
+                if (upcomingRuns.length > 1) ...[
+                  // _buildSectionTitle("Anstehend"),
+                  ...upcomingRuns.skip(1).map((p) => PostHistory(post: p)),
                 ] else ...[
-                  if (grouped.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    _buildPastGrouped(grouped)
-                  ],
+                  const SizedBox(height: 32),
+                  _buildUpcomingEmptyCard(),
+                ]
+              ] else ...[
+                if (grouped.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _buildPastGrouped(grouped)
+                ] else ...[
+                  _buildHistoryFallback(),
                 ]
               ]
-            ],
+            ]
           )
       )
     );

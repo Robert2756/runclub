@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
 
     <application
-        android:label="run_club"
+        android:label="Enduvo"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
@@ -26,9 +26,21 @@
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
 
+            <!-- Launcher icon -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+
+            <!-- Deep link -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="com.enduvo.app"
+                    android:host="login-callback" />
             </intent-filter>
         </activity>
 

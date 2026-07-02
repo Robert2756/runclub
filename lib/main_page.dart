@@ -123,12 +123,21 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
     return Scaffold(
       appBar: AppAppBar(
         title: Text(
-          "RunClub",
+          // "RunClub",
+          "Enduvo",
           style: GoogleFonts.bebasNeue(
             fontSize: 28,
             letterSpacing: 1.5,
           ),
         ),
+        // title: Text(
+        //   "Entdecken",
+        //   style: GoogleFonts.inter(
+        //     fontSize: 28,
+        //     fontWeight: FontWeight.w700,
+        //     letterSpacing: 0.2,
+        //   ),
+        // ),
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
