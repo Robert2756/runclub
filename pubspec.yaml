@@ -51,6 +51,7 @@ dependencies:
   gal: ^2.3.1
   device_calendar: ^4.3.0
   shimmer: ^3.0.0
+  app_links: ^6.4.1
   # flutter_launcher_icons: ^0.13.1
   flutter_localizations:
     sdk: flutter

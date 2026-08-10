@@ -227,18 +227,6 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
                           Image.network(
                             widget.post.imgurl!,
                             fit: BoxFit.cover,
-                            // frameBuilder: (context, child, frame, wasSyncLoaded) {
-                            //   if (wasSyncLoaded || frame != null) {
-                            //     WidgetsBinding.instance.addPostFrameCallback((_) {
-                            //       if (mounted) {
-                            //         setState(() => _imageLoaded = true);
-                            //       }
-                            //     });
-                            //     return child;
-                            //   }
-
-                            //   return const SizedBox.shrink();
-                            // },
                             loadingBuilder: (context, child, progress) {
                               final isLoading = progress != null;
 
@@ -261,14 +249,6 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
                               child: const Icon(Icons.image_not_supported_outlined),
                             ),
                           ),
-
-                          // if (!_imageLoaded)
-                          //   Shimmer.fromColors(
-                          //     baseColor: Colors.grey.shade200,
-                          //     highlightColor: Colors.grey.shade100,
-                          //     period: const Duration(milliseconds: 1400),
-                          //     child: Container(color: Colors.grey.shade200),
-                          //   ),
                         ],
                       )
                       : _buildMap(initialZoom: 12),
@@ -300,9 +280,9 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
                     Text(
                       widget.post.startsAt != null
                           ? "${dataFormatter.formatActivityDate(
-                                DateTime.parse(widget.post.startsAt!),
+                                DateTime.parse(widget.post.startsAt!).toLocal(),
                               )} • ${dataFormatter.formatTime(
-                                DateTime.parse(widget.post.startsAt!),
+                                DateTime.parse(widget.post.startsAt!).toLocal(),
                               )} Uhr"
                           : "—",
                       style: TextStyle(
@@ -316,13 +296,13 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
                     // META ROW
                     Row(
                       children: [
-                        if(widget.post.distance != null) ...[
-                          _meta("${dataFormatter.formatDistance(widget.post.distance ?? 0)} km"),
-                        ],
-                        if(widget.post.pace != null) ...[
-                          const SizedBox(width: 8),
-                          _meta(dataFormatter.formatPace(widget.post.pace ?? 0)),
-                        ],
+                        // if(widget.post.distance != null) ...[
+                        //   _meta("${dataFormatter.formatDistance(widget.post.distance ?? 0)} km"),
+                        // ],
+                        // if(widget.post.pace != null) ...[
+                        //   const SizedBox(width: 8),
+                        //   _meta(dataFormatter.formatPace(widget.post.pace ?? 0)),
+                        // ],
                         const Spacer(),
 
                         if (widget.post.creatorId == supabase.auth.currentUser!.id)

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:run_club/settings_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -420,15 +421,6 @@ class _ProfileContentState extends State<ProfileContent> {
       padding: const EdgeInsets.fromLTRB(6, 6, 6, 26),
       children: [
         const SizedBox(height: 10),
-        // 👥 SOCIAL PROOF (only meaningful if NOT me)
-        // if (!widget.isMe)
-        //   SocialProofCard(
-        //     togetherCount: widget.togetherCount,
-        //     lastTogether: widget.lastTogether,
-        //     username: "User",
-        //   ),
-        // const SizedBox(height: 20),
-
         // past runs
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -451,60 +443,173 @@ class _ProfileContentState extends State<ProfileContent> {
             _buildPastGrouped(grouped)
           ],
         ]
-
-        // // Show endorsements
-        // const SizedBox(height: 30),
-        // if (widget.endorsements.isNotEmpty) ...[
-        //   Text(
-        //     "Was andere sagen",
-        //     style: Theme.of(context).textTheme.titleMedium,
-        //   ),
-        //   const SizedBox(height: 8),
-
-        //   ...widget.endorsements.map(
-        //     (e) => MiniEndorsement(
-        //       text: e["text"]!,
-        //       author: e["author"]!,
-        //     ),
-        //   ),
-        // ],
-
-        // // 🧊 EMPTY STATE
-        // if (widget.endorsements.isEmpty && widget.isMe) ...[
-        //   const SizedBox(height: 40),
-        //   Center(
-        //     child: Text(
-        //       "No endorsements yet.\nRun with others to build your profile.",
-        //       textAlign: TextAlign.center,
-        //       style: TextStyle(color: Colors.grey[600]),
-        //     ),
-        //   ),
-        // ],
-
-        // // Create endorsement
-        // const SizedBox(height: 10),
-        // if (!widget.isMe)
-        //   Column(
-        //     crossAxisAlignment: CrossAxisAlignment.start,
-        //     children: [
-        //       Row(
-        //         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        //         children: [
-        //           Text(
-        //             "Endorsements",
-        //             style: Theme.of(context).textTheme.titleMedium,
-        //           ),
-        //           TextButton.icon(
-        //             onPressed: _writeEndorsement,
-        //             icon: const Icon(Icons.add, size: 18),
-        //             label: const Text("Hinzufügen"),
-        //           ),
-        //         ],
-        //       ),
-        //     ],
-        //   ),
-
       ],
+    );
+  }
+}
+
+class _ExpandableChip extends StatefulWidget {
+  final IconData? icon;
+  final String text;
+  final TextStyle textStyle;
+  final Color backgroundColor;
+  final EdgeInsets padding;
+
+  const _ExpandableChip({
+    required this.text,
+    required this.textStyle,
+    this.icon,
+    this.backgroundColor = const Color(0xFFEEEEEE),
+    this.padding = const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+  });
+
+  @override
+  State<_ExpandableChip> createState() => _ExpandableChipState();
+}
+
+class _ExpandableChipState extends State<_ExpandableChip>
+    with SingleTickerProviderStateMixin {
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+  Timer? _autoHideTimer;
+  late final AnimationController _controller;
+  late final Animation<double> _fade;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+      reverseDuration: const Duration(milliseconds: 120),
+    );
+    _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _scale = Tween<double>(begin: 0.85, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    );
+  }
+
+  void _toggle() {
+    if (_overlayEntry != null) {
+      _hide();
+    } else {
+      _show();
+    }
+  }
+
+  void _show() {
+    final overlay = Overlay.of(context);
+    _overlayEntry = OverlayEntry(builder: (_) => _buildOverlay());
+    overlay.insert(_overlayEntry!);
+    _controller.forward(from: 0);
+
+    _autoHideTimer?.cancel();
+    _autoHideTimer = Timer(const Duration(seconds: 3), _hide);
+  }
+
+  Future<void> _hide() async {
+    _autoHideTimer?.cancel();
+    if (_overlayEntry == null) return;
+    await _controller.reverse();
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  Widget _buildOverlay() {
+    return Stack(
+      children: [
+        // Invisible full-screen layer so tapping anywhere else dismisses it.
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: _hide,
+          ),
+        ),
+        CompositedTransformFollower(
+          link: _layerLink,
+          showWhenUnlinked: false,
+          targetAnchor: Alignment.bottomLeft,
+          followerAnchor: Alignment.topLeft,
+          offset: const Offset(0, -24),
+          child: FadeTransition(
+            opacity: _fade,
+            child: ScaleTransition(
+              scale: _scale,
+              alignment: Alignment.bottomLeft,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.18),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    widget.text,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  void dispose() {
+    _autoHideTimer?.cancel();
+    _overlayEntry?.remove();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: GestureDetector(
+        onTap: _toggle,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: widget.padding,
+          decoration: BoxDecoration(
+            color: widget.backgroundColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.icon != null) ...[
+                Icon(widget.icon, size: 12, color: Colors.grey[600]),
+                const SizedBox(width: 3),
+              ],
+              Flexible(
+                child: Text(
+                  widget.text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: widget.textStyle,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -521,14 +626,18 @@ class ProfileHeader extends StatelessWidget {
   final int? age;
   final String? userName;
   final String? fullName;
+  final String? town;
+  final bool isUploadingAvatar;
 
   const ProfileHeader({
     required this.isMe,
     this.avatarUrl,
     this.bio,
     this.age,
+    this.town,
     this.onEditAvatar,
     this.onEditBio,
+    this.isUploadingAvatar = false,
     required this.fullName,
     required this.userName,
     required this.togetherCount,
@@ -551,23 +660,78 @@ class ProfileHeader extends StatelessWidget {
             children: [
               Stack(
                 children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Colors.grey[300],
-                    backgroundImage: NetworkImage(avatarUrl ?? "https://media.istockphoto.com/id/2221502929/de/vektor/flache-abbildung-in-graustufen-avatar-benutzerprofil-personensymbol-geschlechtsneutrale.jpg"),
+                  Builder(
+                    builder: (context) {
+                      final resolvedUrl = avatarUrl ??
+                          "https://media.istockphoto.com/id/2221502929/de/vektor/flache-abbildung-in-graustufen-avatar-benutzerprofil-personensymbol-geschlechtsneutrale.jpg";
+                      // Unique enough per profile screen: tied to
+                      // whether it's "my" avatar and the current image
+                      // URL, so different profiles/pictures don't
+                      // collide with an in-flight Hero from another one.
+                      final heroTag = 'profile-avatar-$isMe-$resolvedUrl';
+
+                      return GestureDetector(
+                        // Tapping the picture (not the edit icon) opens
+                        // the full-screen viewer, for me and for other
+                        // users alike. Disabled mid-upload so it can't
+                        // open on a stale/in-flight image.
+                        onTap: isUploadingAvatar
+                            ? null
+                            : () => _openAvatarViewer(
+                                  context,
+                                  resolvedUrl,
+                                  heroTag,
+                                ),
+                        child: Hero(
+                          tag: heroTag,
+                          child: CircleAvatar(
+                            radius: 50,
+                            backgroundColor: Colors.grey[300],
+                            backgroundImage: NetworkImage(resolvedUrl),
+                          ),
+                        ),
+                      );
+                    },
                   ),
+
+                  // Spinner overlay while a new avatar is uploading.
+                  // Clipped to a circle so it matches the avatar shape
+                  // instead of spilling into a square corner.
+                  if (isUploadingAvatar)
+                    Positioned.fill(
+                      child: ClipOval(
+                        child: Container(
+                          color: Colors.black.withOpacity(0.35),
+                          child: const Center(
+                            child: SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
 
                   if (isMe)
                     Positioned(
                       bottom: 0,
                       right: 0,
-                      child: Container(
-                        padding: EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          shape: BoxShape.circle,
+                      child: GestureDetector(
+                        // Disabled while an upload is already in
+                        // flight so it can't be triggered twice.
+                        onTap: isUploadingAvatar ? null : onEditAvatar,
+                        child: Container(
+                          padding: EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.black,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.edit, size: 14, color: Colors.white),
                         ),
-                        child: Icon(Icons.edit, size: 14, color: Colors.white),
                       ),
                     ),
                 ],
@@ -582,11 +746,15 @@ class ProfileHeader extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            fullName ?? "Nutzer",
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
+                          Flexible(
+                            child: Text(
+                              fullName ?? "Nutzer",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                           if (age != null) ...[
@@ -605,14 +773,43 @@ class ProfileHeader extends StatelessWidget {
 
                       const SizedBox(height: 2),
 
-                      Text(
-                        "@$userName",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey[500],
-                          fontWeight: FontWeight.w400,
-                        ),
-                      ),
+                      Row(
+                        children: [
+                          if (town != null && town!.isNotEmpty)
+                            // Town gets 3 parts of the shared space; tap
+                            // reveals the full name via _ExpandableChip.
+                            Flexible(
+                              flex: 3,
+                              child: _ExpandableChip(
+                                icon: Icons.location_on_outlined,
+                                text: town!,
+                                textStyle: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ),
+
+                          const SizedBox(width: 6),
+
+                          // Username gets 2 parts, same tap-to-reveal
+                          // behavior as the town chip — kept visually
+                          // as plain text (no pill background) to match
+                          // the original look, just tappable now.
+                          Flexible(
+                            flex: 2,
+                            child: _ExpandableChip(
+                              text: "@$userName",
+                              textStyle: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[500],
+                              ),
+                              backgroundColor: Colors.transparent,
+                              padding: EdgeInsets.zero,
+                            ),
+                          ),
+                        ],
+                      )
                     ],
                   )
               ),
@@ -653,79 +850,7 @@ class ProfileHeader extends StatelessWidget {
             ),
 
           const SizedBox(height: 12),
-          // // 🔥 PRIMARY ACTION
-          // if (!(isMe))
-          //   Row(
-          //     mainAxisAlignment: MainAxisAlignment.center,
-          //     children: [
-          //       OutlinedButton.icon(
-          //         onPressed: onPrimaryAction,
-          //         icon: const Icon(Icons.person_add_alt_1, size: 18),
-          //         label: const Text("Einladen"),
-          //         style: OutlinedButton.styleFrom(
-          //           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          //           shape: RoundedRectangleBorder(
-          //             borderRadius: BorderRadius.circular(20),
-          //           ),
-          //         ),
-          //       ),
-          //     ],
-          //   ),
         ],
-      ),
-    );
-  }
-}
-
-class _ModernField extends StatelessWidget {
-  final String label;
-  final TextEditingController controller;
-  final int maxLength;
-  final int maxLines;
-  final TextInputType? keyboardType;
-  final String? errorText;
-  final Function(String)? onChanged;
-
-  const _ModernField({
-    required this.label,
-    required this.controller,
-    this.maxLength = 30,
-    this.maxLines = 1,
-    this.keyboardType,
-    this.errorText,
-    this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      maxLength: maxLength,
-      maxLines: maxLines,
-      keyboardType: keyboardType,
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        labelText: label,
-        errorText: errorText,
-        counterText: "",
-        filled: true,
-        fillColor: Colors.grey[50],
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.grey.shade200),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.grey.shade200),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Colors.black),
-        ),
       ),
     );
   }
@@ -745,9 +870,9 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> with RouteAware {
   String? _avatarUrl;
   int? _age;
+  String? _town;
   String? _fullName;
   String? _userName;
-  File? _profileImage;
   final supabase = Supabase.instance.client;
   bool get isMe => widget.profileId == supabase.auth.currentUser!.id;
   String? _bio;
@@ -758,6 +883,10 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
   bool _loadingProfile = false;
   bool get _profileReady =>
     _userName != null;
+  bool _uploadingAvatar = false;
+  int _avatarCacheBuster = 0;
+  String? get _displayAvatarUrl =>
+    _avatarUrl == null ? null : '$_avatarUrl?v=$_avatarCacheBuster';
 
   Future<void> _refreshProfile() async {
     await fetchProfile();
@@ -814,7 +943,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
     try {
       final response = await supabase
           .from('profiles')
-          .select('avatar_url, username, bio, age, full_name')
+          .select('avatar_url, username, bio, age, full_name, town')
           .eq('id', widget.profileId)
           .single(); // fetch single row
 
@@ -826,6 +955,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
         _userName = response['username'] as String?;
         _age = response['age'] as int?;
         _fullName = response['full_name'] as String?;
+        _town = response['town'] as String?;
       });
     } catch (e) {
         debugPrint('Error fetching profile image: $e');
@@ -849,32 +979,39 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
   }
 
   void _editAvatar() async {
-    File? compressedImage;
+    // User cancelled the picker: nothing to do, nothing to spin.
     final File? pickedImage = await imageService.pickImage();
+    if (pickedImage == null) return;
+
     final userId = supabase.auth.currentUser!.id;
-    if (pickedImage != null) {
-      final File? cropedImage = await imageService.cropImageWithUI(pickedImage);
-      if (cropedImage != null) {
-        compressedImage = await imageService.compressImage(cropedImage);
-      }
-      // Upload to Supabase storage then update profile image
-      try {
-        await uploadProfileImage(userId, compressedImage);
-        // update UI
-        setState(() {
-          _profileImage = compressedImage;
-        });
-      } catch (e) {
-        debugPrint('Upload failed: $e');
-        // show error message in UI
+
+    final File? croppedImage = await imageService.cropImageWithUI(pickedImage);
+    if (croppedImage == null) return; // cancelled the crop step
+
+    final File? compressedImage = await imageService.compressImage(croppedImage);
+
+    setState(() => _uploadingAvatar = true);
+
+    try {
+      await uploadProfileImage(userId, compressedImage);
+      await fetchProfile();
+
+      if (!mounted) return;
+      setState(() {
+        // Bump the cache buster so the (same) public URL is treated
+        // as a new image and actually reloads.
+        _avatarCacheBuster++;
+      });
+    } catch (e) {
+      debugPrint('Upload failed: $e');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to upload profile image.')),
         );
       }
+    } finally {
+      if (mounted) setState(() => _uploadingAvatar = false);
     }
-    setState(() {
-      fetchProfile();
-    });
   }
 
   void _editProfile() async {
@@ -884,8 +1021,10 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
     final ageController = TextEditingController(
       text: _age?.toString() ?? "",
     );
+    final townController = TextEditingController(text: _town ?? "");
 
     String? usernameError;
+    bool isSaving = false;
 
     Future<bool> checkUsernameAvailable(String username) async {
       if (username.isEmpty) return false;
@@ -976,6 +1115,15 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
 
                             const SizedBox(height: 14),
 
+                            // Town
+                            _ModernField(
+                              label: "Town",
+                              controller: townController,
+                              maxLength: 30,
+                            ),
+
+                            const SizedBox(height: 14),
+
                             // BIO
                             _ModernField(
                               label: "Bio",
@@ -1002,15 +1150,52 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                                 ),
                                 Expanded(
                                   child: ElevatedButton(
-                                    onPressed: usernameError != null
+                                    onPressed: (usernameError != null || isSaving)
                                         ? null
-                                        : () {
-                                            Navigator.pop(context, {
+                                        : () async {
+                                            setModalState(() {
+                                              isSaving = true;
+                                            });
+
+                                            final updatedProfile = {
                                               "name": nameController.text.trim(),
                                               "username": usernameController.text.trim(),
                                               "bio": bioController.text.trim(),
                                               "age": int.tryParse(ageController.text.trim()),
-                                            });
+                                              "town": townController.text.trim(),
+                                            };
+
+                                            try {
+                                              await supabase.from('profiles').update({
+                                                'full_name': updatedProfile["name"],
+                                                'username': updatedProfile["username"],
+                                                'bio': updatedProfile["bio"],
+                                                'age': updatedProfile["age"],
+                                                'town': updatedProfile["town"],
+                                              }).eq('id', widget.profileId);
+
+                                              setState(() {
+                                                _fullName = updatedProfile["name"].toString();
+                                                _userName = updatedProfile["username"].toString();
+                                                _bio = updatedProfile["bio"].toString();
+                                                _age = int.tryParse(updatedProfile["age"].toString());
+                                                _town = updatedProfile["town"].toString();
+                                              });
+
+                                              // Update the profile page data from Supabase
+                                              await fetchProfile();
+
+                                              if (context.mounted) {
+                                                Navigator.pop(context);
+                                              }
+
+                                            } catch (e) {
+                                              debugPrint("Profile update error: $e");
+
+                                              setModalState(() {
+                                                isSaving = false;
+                                              });
+                                            }
                                           },
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.black,
@@ -1019,7 +1204,16 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                                         borderRadius: BorderRadius.circular(14),
                                       ),
                                     ),
-                                    child: const Text("Speichern"),
+                                    child: isSaving
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Text("Speichern"),
                                   ),
                                 ),
                               ],
@@ -1045,23 +1239,6 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
         );
       },
     );
-
-    if (result != null) {
-      debugPrint("Result: $result");
-      await supabase.from('profiles').update({
-        'full_name': result["name"],
-        'username': result["username"],
-        'bio': result["bio"],
-        'age': result["age"],
-      }).eq('id', widget.profileId);
-
-      setState(() {
-        _fullName = result["name"];
-        _userName = result["username"];
-        _bio = result["bio"];
-        _age = result["age"];
-      });
-    }
   }
 
   Future<void> _sendInvite(Post run) async {
@@ -1285,9 +1462,10 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
               children: [
                 ProfileHeader(
                   isMe: isMe,
-                  avatarUrl: _avatarUrl,
+                  avatarUrl: _displayAvatarUrl,
                   fullName: _fullName,
                   userName: _userName,
+                  town: _town,
                   bio: _bio,
                   onEditAvatar: () => _editAvatar(),
                   onEditBio: () => _editProfile(),
@@ -1295,6 +1473,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                   lastTogether: _lastTogether,
                   onPrimaryAction: isMe ? () => _editProfile() : () => _inviteUser(),
                   age: _age,
+                  isUploadingAvatar: _uploadingAvatar
                 ),
                 if (!isMe)
                   SocialProofCard(
@@ -1320,6 +1499,197 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
       : const Center(
         child: CircularProgressIndicator(),
       )
+    );
+  }
+}
+
+class _ModernField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final int maxLength;
+  final int maxLines;
+  final TextInputType? keyboardType;
+  final String? errorText;
+  final Function(String)? onChanged;
+  final Widget? suffixIcon;
+  final Color? borderColor;
+
+  const _ModernField({
+    required this.label,
+    required this.controller,
+    this.maxLength = 30,
+    this.maxLines = 1,
+    this.keyboardType,
+    this.errorText,
+    this.onChanged,
+    this.suffixIcon,
+    this.borderColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final resolvedBorderColor = borderColor ?? Colors.grey.shade200;
+    final resolvedFocusColor = borderColor ?? Colors.black;
+
+    return TextField(
+      controller: controller,
+      maxLength: maxLength,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        errorText: errorText,
+        suffixIcon: suffixIcon,
+        counterText: "",
+        filled: true,
+        fillColor: Colors.grey[50],
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: resolvedBorderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: resolvedBorderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: resolvedFocusColor,
+            width: borderColor != null ? 1.5 : 1,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Opens a full-screen viewer for the given avatar image, flying in from
+/// wherever the tapped avatar is via a Hero animation.
+void _openAvatarViewer(BuildContext context, String url, Object heroTag) {
+  Navigator.of(context).push(
+    PageRouteBuilder(
+      opaque: false,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 220),
+      reverseTransitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return _AvatarViewer(url: url, heroTag: heroTag);
+      },
+    ),
+  );
+}
+
+/// Full-screen avatar viewer: fades/dims in, the avatar itself morphs
+/// from a circle into a rounded rectangle via the Hero flight, supports
+/// pinch-to-zoom, and dismisses either by tapping the backdrop or by
+/// dragging the image down/up (with live opacity + scale feedback,
+/// similar to Instagram/Twitter's photo viewers).
+class _AvatarViewer extends StatefulWidget {
+  final String url;
+  final Object heroTag;
+
+  const _AvatarViewer({required this.url, required this.heroTag});
+
+  @override
+  State<_AvatarViewer> createState() => _AvatarViewerState();
+}
+
+class _AvatarViewerState extends State<_AvatarViewer> {
+  double _dragOffset = 0;
+  double _dragProgress = 0; // 0 = not dragging, 1 = dismiss threshold
+
+  static const double _dismissThreshold = 140;
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    setState(() {
+      _dragOffset += details.delta.dy;
+      _dragProgress =
+          (_dragOffset.abs() / _dismissThreshold).clamp(0.0, 1.0);
+    });
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    if (_dragOffset.abs() > _dismissThreshold ||
+        details.velocity.pixelsPerSecond.dy.abs() > 800) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _dragOffset = 0;
+      _dragProgress = 0;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final backdropOpacity = 0.9 * (1 - _dragProgress * 0.6);
+    final imageScale = 1 - _dragProgress * 0.12;
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).pop(),
+      onVerticalDragUpdate: _onDragUpdate,
+      onVerticalDragEnd: _onDragEnd,
+      child: Material(
+        color: Colors.black.withOpacity(backdropOpacity),
+        child: SafeArea(
+          child: Center(
+            child: Transform.translate(
+              offset: Offset(0, _dragOffset),
+              child: Transform.scale(
+                scale: imageScale,
+                child: Hero(
+                  tag: widget.heroTag,
+                  flightShuttleBuilder: (
+                    flightContext,
+                    animation,
+                    direction,
+                    fromContext,
+                    toContext,
+                  ) {
+                    final forward = direction == HeroFlightDirection.push;
+                    final radiusTween = forward
+                        ? Tween<double>(begin: 50, end: 24)
+                        : Tween<double>(begin: 24, end: 50);
+                    return AnimatedBuilder(
+                      animation: animation,
+                      builder: (context, child) => ClipRRect(
+                        borderRadius: BorderRadius.circular(
+                          radiusTween.evaluate(animation),
+                        ),
+                        child: child,
+                      ),
+                      child: Image.network(widget.url, fit: BoxFit.cover),
+                    );
+                  },
+                  child: GestureDetector(
+                    // Absorb taps on the image itself so pinch/zoom
+                    // gestures don't also trigger the dismiss-on-tap
+                    // behind it.
+                    onTap: () {},
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: InteractiveViewer(
+                        minScale: 1,
+                        maxScale: 4,
+                        child: Image.network(
+                          widget.url,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

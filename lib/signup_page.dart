@@ -1,7 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signin_page.dart';
-import 'feed_page.dart';
 import 'checkEmailPage.dart';
 
 final supabase = Supabase.instance.client;
@@ -14,6 +14,14 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> {
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
 
@@ -21,6 +29,17 @@ class _SignUpPageState extends State<SignUpPage> {
   String? error;
 
   Future<void> signUp() async {
+    final email = emailController.text;
+    final password = passwordController.text;
+    final validationError = _validateInput(email, password);
+
+    if (validationError != null) {
+      setState(() {
+        error = validationError;
+      });
+      return;
+    }
+
     setState(() {
       loading = true;
       error = null;
@@ -28,25 +47,19 @@ class _SignUpPageState extends State<SignUpPage> {
 
     try {
       final response = await supabase.auth.signUp(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
+        email: email,
+        password: password,
       );
 
-      debugPrint("USER: ${response.user}");
-      debugPrint("SESSION: ${response.session}");
-
-      if (response.user == null) {
-        setState(() {
-          error = "Diese E-Mail ist bereits registriert.";
-        });
-        return;
-      }
-      else {
+      if (response.user != null) {
         if (!mounted) return;
-        Navigator.push(
+
+        Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => const CheckEmailPage(),
+            builder: (_) => CheckEmailPage(
+              email: email,
+            ),
           ),
         );
       }
@@ -60,6 +73,10 @@ class _SignUpPageState extends State<SignUpPage> {
           error = _mapAuthError(e.message);
         });
       }
+    } on SocketException {
+      setState(() {
+        error = "Keine Internetverbindung.";
+      });
     } catch (e) {
       debugPrint("Sign up error no mounted: ${e.toString()}");
       if (mounted) {
@@ -75,22 +92,56 @@ class _SignUpPageState extends State<SignUpPage> {
     }
   }
 
+  String? _validateInput(String email, String password) {
+    if (email.isEmpty) {
+      return "Bitte gib eine E-Mail-Adresse ein.";
+    }
+
+    if (email != email.trim()) {
+      return "Die E-Mail-Adresse darf keine Leerzeichen enthalten.";
+    }
+
+    if (password.isEmpty) {
+      return "Bitte gib ein Passwort ein.";
+    }
+
+    if (password.contains(' ')) {
+      return "Das Passwort darf keine Leerzeichen enthalten.";
+    }
+
+    final emailRegex = RegExp(
+      r'^[\w\.\+\-]+@[\w\.-]+\.\w+$',
+    );
+
+    if (!emailRegex.hasMatch(email)) {
+      return "Bitte gib eine gültige E-Mail-Adresse ein.";
+    }
+
+    if (password.length < 8) {
+      return "Das Passwort muss mindestens 8 Zeichen enthalten.";
+    }
+
+    if (password.length > 72) {
+      return "Das Passwort darf maximal 72 Zeichen enthalten.";
+    }
+
+    return null;
+  }
+
   String _mapAuthError(String msg) {
     final lower = msg.toLowerCase();
+    debugPrint("Auth error: $msg");
 
-    if (lower.contains("already")) {
+    if (lower.contains("already registered") ||
+        lower.contains("already exists")) {
       return "Diese E-Mail ist bereits registriert.";
     }
 
     if (lower.contains("password")) {
-      return "Passwort ist zu schwach.";
+      return "Das Passwort erfüllt die Anforderungen nicht.";
     }
 
-    if (lower.contains("invalid")) {
-      return "Ungültige E-Mail-Adresse.";
-    }
-
-    return msg;
+    return "Registrierung fehlgeschlagen. Bitte versuche es erneut.";
   }
 
   @override
@@ -164,7 +215,7 @@ class _SignUpPageState extends State<SignUpPage> {
                                 width: 20,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Text("Regestrieren"),
+                            : const Text("Registrieren"),
                       ),
                     ),
 
@@ -172,7 +223,7 @@ class _SignUpPageState extends State<SignUpPage> {
 
                     TextButton(
                       onPressed: () {
-                        Navigator.push(
+                        Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const SignInPage(),

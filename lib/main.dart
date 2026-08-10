@@ -7,6 +7,10 @@ import 'theme/appearance.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'onboarding_page.dart';
+import 'checkEmailPage.dart';
+import 'package:app_links/app_links.dart';
+import 'package:flutter/scheduler.dart';
+import 'auth_loading_page.dart';
 
 
 final supabase = Supabase.instance.client;
@@ -15,46 +19,103 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint("APP STARTED");
   await Supabase.initialize(
     url: 'https://wczdhrcvwlghrkjmskaa.supabase.co', 
     anonKey: 'sb_publishable_4M-s15nTEGZ7IflPJaRYgA_v2WvjakI',
+    debug: true
   );
+  final appLinks = AppLinks();
+  appLinks.uriLinkStream.listen((uri) async {
+    if (uri.scheme == 'com.enduvo.app' && uri.host == 'login-callback') {
+      debugPrint("Manually handling deep link: $uri");
 
-  // await Supabase.instance.client.auth.signOut();
+      try {
+        Session? session;
+
+        if (uri.queryParameters.containsKey('code')) {
+          final response = await supabase.auth.getSessionFromUrl(uri);
+          session = response.session;
+          debugPrint("PKCE session recovery SUCCEEDED");
+        } else if (uri.fragment.contains('access_token')) {
+          final fragment = Uri.splitQueryString(uri.fragment);
+          final refreshToken = fragment['refresh_token'];
+
+          if (refreshToken != null) {
+            final response = await supabase.auth.setSession(refreshToken);
+            session = response.session;
+            debugPrint("Implicit session recovery SUCCEEDED");
+          }
+        }
+
+        if (session != null) {
+          await _handlePostAuthNavigation(session.user);
+        }
+      } catch (e) {
+        debugPrint("Manual session recovery FAILED: $e");
+      }
+    }
+  });
 
   supabase.auth.onAuthStateChange.listen((data) async {
-    final session = data.session;
-    final user = session?.user;
+    debugPrint("AUTH EVENT: ${data.event}, session: ${data.session != null}");
+    final event = data.event;
 
+    if (event != AuthChangeEvent.signedIn &&
+        event != AuthChangeEvent.initialSession) {
+      return;
+    }
+
+    final user = data.session?.user;
     if (user == null) return;
 
-    await ensureProfileExists(user);
-
-    final profile = await supabase
-        .from('profiles')
-        .select('onboarding_completed')
-        .eq('id', user.id)
-        .maybeSingle();
-
-    final onboardingDone = profile?['onboarding_completed'] ?? false;
-
-    if (onboardingDone == true) {
-      navigatorKey.currentState?.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const MainPage()),
-        (_) => false,
-      );
-    } else {
-      navigatorKey.currentState?.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const OnboardingPage()),
-        (_) => false,
-      );
-    }
+    await _handlePostAuthNavigation(user);
   });
 
   // Enable edge-to-edge mode
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await initializeDateFormatting('de_DE', null);
   runApp(const MyApp());
+}
+
+Future<void> _handlePostAuthNavigation(User user) async {
+  debugPrint("NAV: starting post-auth navigation for ${user.id}");
+
+  if (navigatorKey.currentState == null) {
+    debugPrint("NAV: navigatorKey.currentState is NULL, aborting");
+    return;
+  }
+
+  // Replace whatever screen is currently showing (CheckEmailPage after
+  // email confirmation, SignInPage after password sign-in, etc.) with a
+  // neutral loading screen immediately, before doing any async work.
+  navigatorKey.currentState!.pushAndRemoveUntil(
+    MaterialPageRoute(builder: (_) => const AuthLoadingPage()),
+    (_) => false,
+  );
+
+  await ensureProfileExists(user);
+
+  final profile = await supabase
+      .from('profiles')
+      .select('onboarding_completed')
+      .eq('id', user.id)
+      .maybeSingle();
+
+  final completed = profile?['onboarding_completed'] ?? false;
+
+  if (navigatorKey.currentState == null) {
+    debugPrint("NAV: navigatorKey.currentState is NULL, aborting");
+    return;
+  }
+
+  navigatorKey.currentState!.pushAndRemoveUntil(
+    MaterialPageRoute(
+      builder: (_) => completed ? const MainPage() : const OnboardingPage(),
+    ),
+    (_) => false,
+  );
+  debugPrint("NAV: pushAndRemoveUntil called directly");
 }
 
 Future<void> ensureProfileExists(User user) async {
@@ -76,8 +137,23 @@ Future<void> ensureProfileExists(User user) async {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,7 +169,7 @@ class MyApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: AppAppearance.lightTheme,
         navigatorObservers: [routeObserver],
-        home: const SignInPage(),// AuthGate(),
+        home: const AuthGate(),
         locale: const Locale('de', 'DE'),
         supportedLocales: const [
           Locale('de', 'DE'),
@@ -110,59 +186,101 @@ class MyApp extends StatelessWidget {
 }
 
 // Sign in or Feed
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+
+class _AuthGateState extends State<AuthGate> {
+
+  @override
   Widget build(BuildContext context) {
-    return StreamBuilder<AuthState>(
-      stream: supabase.auth.onAuthStateChange,
-      builder: (context, snapshot) {
-        final session = supabase.auth.currentSession;
+    debugPrint("AuthGate build — currentUser: ${supabase.auth.currentUser?.id}, confirmed: ${supabase.auth.currentUser?.emailConfirmedAt}");
 
-        if (session == null) {
-          return const SignInPage();
-        }
+    final user =
+        supabase.auth.currentUser;
 
-        return const ProfileGate();
-      },
-    );
+
+    if(user == null){
+      return const SignInPage();
+    }
+
+
+    // Email not verified yet
+    debugPrint("Deep Link worked and rerouted back Email Page");
+    if(user.emailConfirmedAt == null){
+
+      return CheckEmailPage(
+        email: user.email!,
+      );
+
+    }
+
+
+    return const ProfileGate();
+
   }
+
 }
 
 class ProfileGate extends StatelessWidget {
   const ProfileGate({super.key});
 
   Future<Widget> _resolve() async {
-    final resUser = await Supabase.instance.client.auth.getUser();
-    final resSession = await Supabase.instance.client.auth.refreshSession();
-    final session = resSession.session;
-    final user = resUser.user;
+    try {
+      debugPrint("PROFILE GATE: starting");
 
-    if (session == null) {
+      final response =
+          await Supabase.instance.client.auth.getUser();
+
+      final user = response.user;
+
+      if (user == null) {
+        debugPrint("PROFILE GATE: no valid user");
+
+        await Supabase.instance.client.auth.signOut();
+
+        return const SignInPage();
+      }
+
+      debugPrint("PROFILE GATE: verified user ${user.id}");
+
+      await ensureProfileExists(user);
+
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('onboarding_completed')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (profile == null) {
+        debugPrint("PROFILE GATE: profile doesn't exist");
+
+        await Supabase.instance.client.auth.signOut();
+
+        return const SignInPage();
+      }
+
+      final done = profile['onboarding_completed'] == true;
+
+      debugPrint("PROFILE GATE: onboarding completed = $done");
+
+      return done
+          ? const MainPage()
+          : const OnboardingPage();
+
+    } catch (e, stackTrace) {
+      debugPrint("PROFILE GATE ERROR: $e");
+      debugPrintStack(stackTrace: stackTrace);
+
+      // Session is invalid OR some other request failed.
       await Supabase.instance.client.auth.signOut();
+
       return const SignInPage();
     }
-
-    if (user == null) {
-      await Supabase.instance.client.auth.signOut();
-      return const SignInPage();
-    }
-
-    final profile = await Supabase.instance.client
-        .from('profiles')
-        .select('onboarding_completed')
-        .eq('id', user.id)
-        .maybeSingle();
-
-    if (profile == null) {
-      await Supabase.instance.client.auth.signOut();
-      return const SignInPage();
-    }
-
-    final done = profile['onboarding_completed'] == true;
-
-    return done ? const MainPage() : const OnboardingPage();
   }
 
   @override

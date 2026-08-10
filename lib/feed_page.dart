@@ -10,6 +10,7 @@ import 'widgets/post_placeholder.dart';
 import 'models/post.dart';
 import 'dart:math';
 import 'widgets/loader.dart';
+import 'services/location_picker.dart';
 final supabase = Supabase.instance.client;
 final imageService = ImageService();
 
@@ -34,6 +35,9 @@ class FeedPageState extends State<FeedPage> {
   List<Map<String, dynamic>> candidatePool = [];
   List<Map<String, dynamic>> additionalPostData = [];
   Map<String, bool> showImageMap = {};
+
+  LocationSource _locationSource = LocationSource.gps;
+  String _locationLabel = 'Locating…';
   
   double? _userLat;
   double? _userLon;
@@ -63,8 +67,19 @@ class FeedPageState extends State<FeedPage> {
   }
 
   Future<void> _initFeed() async {
-    await _initUserLocation(); // wait for user location or skip if denied
-    await fetchCandidates(); // fetch posts based on user location
+    final saved = await LocationPrefs.load();
+    if (saved != null && saved.source == LocationSource.manual) {
+      _userLat = saved.lat;
+      _userLon = saved.lon;
+      _locationEnabled = true;
+      _locationSource = LocationSource.manual;
+      _locationLabel = saved.name;
+    } else {
+      await _initUserLocation();
+      _locationSource = LocationSource.gps;
+      _locationLabel = 'Nearby'; // reverse-geocode later if you want the real city name
+    }
+    await fetchCandidates();
   }
 
   Future<void> _refreshFeed() async {
@@ -171,12 +186,17 @@ class FeedPageState extends State<FeedPage> {
         _dbOffset += candidate_size;
 
       } else {
-        final lat = _userLat!;
-        final lon = _userLon!;
+        final lat = _userLat;
+        final lon = _userLon;
 
-        // crude bounding box (fast prefilter)
+        if (lat == null || lon == null) {
+          debugPrint('Location enabled but coordinates are missing');
+          return;
+        }
+
         final latDelta = _radiusMeters / 111320.0;
-        final lonDelta = _radiusMeters / (111320.0 * cos(lat * 3.1416 / 180));
+        final lonDelta =
+            _radiusMeters / (111320.0 * cos(lat * pi / 180));
 
         final minLat = lat - latDelta;
         final maxLat = lat + latDelta;
@@ -408,6 +428,30 @@ class FeedPageState extends State<FeedPage> {
     );
   }
 
+  Future<void> _openLocationPicker() async {
+    final result = await showModalBottomSheet<LocationPickerResult>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const LocationPickerSheet(),
+    );
+    if (result == null) return;
+
+    await LocationPrefs.save(
+      lat: result.lat, lon: result.lon, name: result.name, source: result.source,
+    );
+
+    setState(() {
+      _userLat = result.lat;
+      _userLon = result.lon;
+      _locationEnabled = true;
+      _locationSource = result.source;
+      _locationLabel = result.name;
+    });
+
+    await _refreshFeed();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -426,116 +470,135 @@ class FeedPageState extends State<FeedPage> {
             final baseCount = posts.length;
             final totalBottomPadding = standardSpacing + bottomBarHeight + fabSpacing + bottomSafeArea;
 
-            return NotificationListener<ScrollNotification>(
-              onNotification: (ScrollNotification scrollInfo) {
-                if (_status == FeedStatus.idle &&
-                    scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
-                  _applyPosts(); // load next batch
-                }
-                return false; // return false to allow the scroll to continue
-              },
-              child: RefreshIndicator(
-                color: Colors.black,
-                backgroundColor: Colors.white,
-                strokeWidth: 2.0,
-                onRefresh: _refreshFeed,
-                child: ListView.builder(
-                  controller: _scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  cacheExtent: 400,
-                  padding: EdgeInsets.fromLTRB(
-                    standardSpacing, // left
-                    standardSpacingTop, // top
-                    standardSpacing, // right
-                    totalBottomPadding, // bottom
+            return Column(
+              children: [
+                // Location selector ABOVE the list
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: LocationChip(
+                      label: _locationLabel,
+                      source: _locationSource,
+                      onTap: _openLocationPicker,
+                    ),
                   ),
-                  itemCount: posts.isEmpty
-                    ? 1 // ALWAYS exactly one item during initial state
-                    : baseCount + (hasPinned ? 1 : 0) + (_status == FeedStatus.exhausted ? 1 : 0) + (_status == FeedStatus.loadingMore || _status == FeedStatus.applyCandidates ? 1 : 0), // add extra item for pagination loader or feed exhausted message
-                  itemBuilder: (context, index) {
-                    /// 1. INITIAL LOADING STATE
-                    if (_status == FeedStatus.loadingInitial && _status != FeedStatus.refreshing ) {
-                      return const Padding(
-                        padding: EdgeInsets.only(bottom: 16),
-                        child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 20),
-                            child: Center(
-                              child: FeedRefreshSpinner(),
-                            ),
-                          ) //PostPlaceholder(),
-                      );
-                    }
-
-                    /// 2. PAGINATION LOADER (only AFTER posts exist)
-                    final isFooter = index >= posts.length;
-
-                    if (isFooter) {
-                      if (_status == FeedStatus.loadingMore ||
-                          _status == FeedStatus.applyCandidates) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          child: Center(child: FeedRefreshSpinner()),
-                        );
+                ),
+                Expanded(
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (ScrollNotification scrollInfo) {
+                      if (_status == FeedStatus.idle &&
+                          scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200) {
+                        _applyPosts(); // load next batch
                       }
-                    }
+                      return false; // return false to allow the scroll to continue
+                    },
+                    child: RefreshIndicator(
+                      color: Colors.black,
+                      backgroundColor: Colors.white,
+                      strokeWidth: 2.0,
+                      onRefresh: _refreshFeed,
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        cacheExtent: 400,
+                        padding: EdgeInsets.fromLTRB(
+                          standardSpacing, // left
+                          standardSpacingTop, // top
+                          standardSpacing, // right
+                          totalBottomPadding, // bottom
+                        ),
+                        itemCount: posts.isEmpty
+                          ? 1 // ALWAYS exactly one item during initial state
+                          : baseCount + (hasPinned ? 1 : 0) + (_status == FeedStatus.exhausted ? 1 : 0) + (_status == FeedStatus.loadingMore || _status == FeedStatus.applyCandidates ? 1 : 0), // add extra item for pagination loader or feed exhausted message
+                        itemBuilder: (context, index) {
+                          /// 1. INITIAL LOADING STATE
+                          if (_status == FeedStatus.loadingInitial && _status != FeedStatus.refreshing ) {
+                            return const Padding(
+                              padding: EdgeInsets.only(bottom: 16),
+                              child: Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 20),
+                                  child: Center(
+                                    child: FeedRefreshSpinner(),
+                                  ),
+                                ) //PostPlaceholder(),
+                            );
+                          }
 
-                    if (index < posts.length) {
-                      final post = posts[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Column(
-                          children: [
-                            RepaintBoundary(
-                              child: PostCard(
-                                key: ValueKey(post['id'].toString()),
-                                post: Post(
-                                  id: post['id'].toString(),
-                                  title: post['title'],
-                                  creatorId: post['creator_id'],
-                                  imgurl: post['image_url'],
-                                  description: post['description'],
-                                  activity: post['activity'],
-                                  distance: post['distance'],
-                                  pace: post['pace'],
-                                  date: post['date'],
-                                  time: post['time'],
-                                  latitude: post['latitude'],
-                                  longitude: post['longitude'],
-                                  town: post['town'],
-                                  createdAt: post['created_at'],
-                                  userdistance: post['user_distance'],
-                                  startsAt: post['starts_at'],
-                                ),
-                                usernameCreator: post['username'],
-                                avatarUrlCreator: post['avatar_url'],
-                                participantIds: post["participant_ids"],
-                                showImageMain: showImageMap[post['id'].toString()] ?? true,
-                                onToggle: (val) {
-                                  setState(() {
-                                    showImageMap[post['id'].toString()] = val;
-                                  });
-                                },
-                                onPostDeleted: (id) async{
-                                  await _refreshFeed();
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16),
-                              child: Divider(
-                                height: 1,
-                                thickness: 1,
-                                color: Color(0x0A000000),
-                              ),
-                            ),
-                          ],
-                        )
-                      );
-                    }
-                  }
+                          /// 2. PAGINATION LOADER (only AFTER posts exist)
+                          final isFooter = index >= posts.length;
+
+                          if (isFooter) {
+                            if (_status == FeedStatus.loadingMore ||
+                                _status == FeedStatus.applyCandidates) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(child: FeedRefreshSpinner()),
+                              );
+                            }
+                          }
+
+                          if (index < posts.length) {
+                            final post = posts[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Column(
+                                children: [
+                                  RepaintBoundary(
+                                    child: PostCard(
+                                      key: ValueKey(post['id'].toString()),
+                                      post: Post(
+                                        id: post['id'].toString(),
+                                        title: post['title'],
+                                        creatorId: post['creator_id'],
+                                        imgurl: post['image_url'],
+                                        description: post['description'],
+                                        activity: post['activity'],
+                                        distance: post['distance'],
+                                        pace: post['pace'],
+                                        speed: post['speed'],
+                                        date: post['date'],
+                                        time: post['time'],
+                                        latitude: post['latitude'],
+                                        longitude: post['longitude'],
+                                        town: post['town'],
+                                        createdAt: post['created_at'],
+                                        userdistance: post['user_distance'],
+                                        startsAt: post['starts_at'],
+                                      ),
+                                      usernameCreator: post['username'],
+                                      avatarUrlCreator: post['avatar_url'],
+                                      participantIds: post["participant_ids"],
+                                      showImageMain: showImageMap[post['id'].toString()] ?? true,
+                                      onToggle: (val) {
+                                        setState(() {
+                                          showImageMap[post['id'].toString()] = val;
+                                        });
+                                      },
+                                      onPostDeleted: (id) async{
+                                        await _refreshFeed();
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 16),
+                                    child: Divider(
+                                      height: 1,
+                                      thickness: 1,
+                                      color: Color(0x0A000000),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            );
+                          }
+                        }
+                      )
+                    )
+                  )
                 )
-              )
+              ]
             );
           },
         ),

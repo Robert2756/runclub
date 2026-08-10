@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -63,23 +64,22 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   bool _descExpanded = false;
   bool _joined = false;
   List<String> _participantAvatars = [];
-  // List<String> debugParticipants = [
-  //   'https://i.pravatar.cc/40?img=11',
-  //   'https://i.pravatar.cc/40?img=7',
-  //   'https://i.pravatar.cc/40?img=8',
-  //   'https://i.pravatar.cc/40?img=9',
-  //   'https://i.pravatar.cc/40?img=10'];
   List<String> debugParticipants = [];
   bool isReady = false;
   final bullet = " •\u200B ";
   bool _imageLoaded = false;
-  // List<String> participantUsernames = [];
-  
+
+  // Map reveal state: the map starts hidden behind a shimmer for a
+  // short fixed window right after the card mounts, giving the tile
+  // requests a moment to land in the background instead of the user
+  // watching them pop in raw. After that first reveal, tiles are
+  // cached (both by flutter_map and the OS image cache), so toggling
+  // between image/map afterwards is effectively instant and doesn't
+  // need to re-trigger this.
+  bool _mapReady = false;
+  Timer? _mapRevealTimer;
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
-  // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
-  // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
-  // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
 
   @override
   void didChangeDependencies() {
@@ -98,6 +98,14 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     if (oldWidget.post.id != widget.post.id) {
       _imageLoaded = false;
     }
+  }
+
+  void _scheduleMapReveal() {
+    _mapRevealTimer?.cancel();
+    _mapRevealTimer = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted) return;
+      setState(() => _mapReady = true);
+    });
   }
 
   Future<void> loadAll() async {
@@ -122,20 +130,15 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
         avatars = (avatarRes as List)
             .map((a) => a['avatar_url'] as String)
             .toList();
-        
-        // participantUsernames = (avatarRes as List)
-        //     .map((a) => a['username'] as String)
-        //     .toList();
       }
 
       setState(() {
         _participantAvatars = [
-          ...avatars, // at to beginning
-          ...debugParticipants // DEBUGGING
+          ...avatars,
+          ...debugParticipants
         ];
         _joined = joinedRes != null;
         isReady = true;
-        // participantUsernames = participantUsernames;
       });
 
     } catch (e) {
@@ -148,7 +151,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
       final response = await supabase
           .from ('activity_participants')
           .select ('user_id')
-          .eq('post_id', widget.post.id) // filter for this post
+          .eq('post_id', widget.post.id)
           .eq('status', 'joined');
 
       final List<String> userIds = (response as List)
@@ -166,7 +169,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   Future<void> fetchParticipantAvatars() async {
     try {
       final userIds = await fetchParticipants();
-      // if (userIds.isEmpty) return;
 
       final response = await supabase
           .from('profiles')
@@ -179,8 +181,8 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
 
       setState(() {
         _participantAvatars = [
-          ...avatarUrls, // at to beginning
-          ...debugParticipants // DEBUGGING
+          ...avatarUrls,
+          ...debugParticipants
         ];
       });
     }
@@ -220,53 +222,89 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
 
     return AspectRatio(
       aspectRatio: widget.post.imgurl != null ? 1 / 1 : 4 / 3,
-      child: FlutterMap(
-        options: MapOptions(
-          initialCenter: location,
-          initialZoom: initialZoom,
-          interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.none,
-          ),
-        ),
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          TileLayer(
-            urlTemplate: mapUrl,
-            userAgentPackageName: 'com.robert.app',
-          ),
-          if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: location,
-                  width: 42,
-                  height: 46,
-                  alignment: Alignment.topCenter,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.18),
-                          blurRadius: 14,
-                          offset: const Offset(0, 6),
+          FlutterMap(
+            options: MapOptions(
+              initialCenter: location,
+              initialZoom: initialZoom,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.none,
+              ),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: mapUrl,
+                userAgentPackageName: 'com.robert.app',
+                // Cross-fades each tile in instead of hard-cutting it
+                // into place — smooths out any tiles that are still
+                // arriving after the shimmer window below has closed
+                // (slow connections, deeper zoom, etc.).
+                tileDisplay: const TileDisplay.fadeIn(
+                  duration: Duration(milliseconds: 250),
+                ),
+              ),
+              if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: location,
+                      width: 42,
+                      height: 46,
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.18),
+                              blurRadius: 14,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Icon(
-                        widget.post.activity == "Bike"
-                            ? Icons.directions_bike
-                            : Icons.directions_run,
-                        color: Colors.black,
-                        size: 18,
+                        child: Center(
+                          child: Icon(
+                            widget.post.activity == "Bike"
+                                ? Icons.directions_bike
+                                : Icons.directions_run,
+                            color: Colors.black,
+                            size: 18,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
-            )
+                  ],
+                )
+            ],
+          ),
+
+          // Shimmer covers the map until the reveal window closes,
+          // then fades out. IgnorePointer while showing so it doesn't
+          // swallow taps meant for the map/card underneath.
+          IgnorePointer(
+            ignoring: _mapReady,
+            child: AnimatedOpacity(
+              opacity: _mapReady ? 0 : 1,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+              child: const _ShimmerPlaceholder(),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget buildShimmer() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey.shade300,
+      highlightColor: Colors.grey.shade100,
+      period: const Duration(milliseconds: 1200),
+      child: Container(
+        color: Colors.grey.shade300,
       ),
     );
   }
@@ -307,71 +345,11 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     );
   }
 
-  // Widget _buildImage() {
-  //   return AspectRatio(
-  //     aspectRatio: 1 / 1,
-  //     child: Stack(
-  //       fit: StackFit.expand,
-  //       children: [
-  //         // Image.network(
-  //         //   widget.post.imgurl!,
-  //         //   fit: BoxFit.cover,
-  //         //   cacheWidth: (MediaQuery.of(context).size.width *
-  //         //     MediaQuery.of(context).devicePixelRatio).round(),
-  //         //   frameBuilder: (context, child, frame, wasSyncLoaded) {
-  //         //     if (wasSyncLoaded || frame != null) {
-  //         //       WidgetsBinding.instance.addPostFrameCallback((_) {
-  //         //         if (mounted) {
-  //         //           setState(() => _imageLoaded = true);
-  //         //         }
-  //         //       });
-  //         //       return child;
-  //         //     }
-
-  //         //     return const SizedBox.shrink();
-  //         //   },
-  //         //   errorBuilder: (_, __, ___) => Container(
-  //         //     color: Colors.grey.shade200,
-  //         //     child: const Icon(Icons.image_not_supported_outlined),
-  //         //   ),
-  //         // ),
-  //         Image.network(
-  //           widget.post.imgurl!,
-  //           fit: BoxFit.cover,
-  //           cacheWidth: (MediaQuery.of(context).size.width *
-  //                   MediaQuery.of(context).devicePixelRatio)
-  //               .round(),
-  //           filterQuality: FilterQuality.low,
-  //         ),
-
-  //         // if (!_imageLoaded)
-  //         //   Shimmer.fromColors(
-  //         //     baseColor: Colors.grey.shade200,
-  //         //     highlightColor: Colors.grey.shade100,
-  //         //     period: const Duration(milliseconds: 1400),
-  //         //     child: Container(color: Colors.grey.shade200),
-  //         //   ),
-  //       ],
-  //     ),
-  //   );
-  // }
-
-  Widget buildShimmer() {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey.shade300,
-      highlightColor: Colors.grey.shade100,
-      period: const Duration(milliseconds: 1200),
-      child: Container(
-        color: Colors.grey.shade300,
-      ),
-    );
-  }
-
   Widget _buildChip(IconData icon, String label) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 20, color: const Color.fromARGB(61, 0, 0, 0)), // Colors.black87
+        Icon(icon, size: 20, color: const Color.fromARGB(61, 0, 0, 0)),
         const SizedBox(width: 4),
         Text(label,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
@@ -394,7 +372,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
           return FadeTransition(
             opacity: animation,
             child: Container(
-              color: Colors.black, // <- makes the transition feel dark
+              color: Colors.black,
               child: child,
             ),
           );
@@ -404,28 +382,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     );
 
     if (!mounted) return;
-    // debugPrint("returned from ActivityPage: $refreshPost");
-    // if (refreshPost == true) {
-    //   await fetchParticipantAvatars();
-    //   widget.onPostDeleted?.call(widget.post.id);
-    // }
-  }
-
-  Color avatarColor(String userId) {
-    const colors = [
-      Color(0xFFE57373),
-      Color(0xFF64B5F6),
-      Color(0xFF81C784),
-      Color(0xFFFFB74D),
-      Color(0xFFBA68C8),
-      Color(0xFF4DB6AC),
-      Color(0xFFA1887F),
-      Color(0xFF7986CB),
-      Color(0xFFFF8A65),
-      Color(0xFF90A4AE),
-    ];
-
-    return colors[userId.hashCode.abs() % colors.length];
   }
 
   // initial fetch when page is first opened
@@ -433,6 +389,17 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   void initState() {
     super.initState();
     loadAll();
+    // Kick off the map's shimmer-to-reveal window once per card, right
+    // away — regardless of whether the map or the image is the main
+    // view right now, since the map is also rendered as the small
+    // corner preview when the image is main.
+    _scheduleMapReveal();
+  }
+
+  @override
+  void dispose() {
+    _mapRevealTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -563,15 +530,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                       ],
                     ),
                     const SizedBox(height:12),
-                    // Text(
-                    //   widget.post.description!,
-                    //   style: TextStyle(
-                    //     fontSize: 13,
-                    //     fontWeight: FontWeight.w400,
-                    //     color: Colors.grey[850],
-                    //     height: 1.2, // tighter line spacing
-                    //   ),
-                    // ),
                     Row(
                       children: [
                         GestureDetector(
@@ -590,7 +548,12 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                           children: [
                             _buildChip(Icons.route, widget.post.distance != null ? "${dataFormatter.formatDistance(widget.post.distance!)} km" : "-"),
                             const SizedBox(width: 8),
-                            _buildChip(Icons.speed, widget.post.pace != null ? dataFormatter.formatPace(widget.post.pace!) : "-"),
+                            _buildChip(Icons.speed, 
+                              widget.post.activity == "Run" ? 
+                                widget.post.pace != null ? dataFormatter.formatPace(widget.post.pace!) : "-"
+                                : widget.post.activity == "Bike" ? 
+                                  widget.post.speed != null ? "${widget.post.speed!.toString()} km/h" : "-"
+                                  : "-"),
                           ],
                         ),
                         const SizedBox(width: 12),
@@ -602,8 +565,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
               ),
             ),
           ),
-          // const SizedBox(height: 5),
-          // post has image
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18),
             child: Container(
@@ -691,7 +652,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                       const descStyle = TextStyle(fontSize: 14);
                       const moreText = " … Mehr anzeigen";
 
-                      // Step 1: Detect if text + "Mehr anzeigen" exceeds 2 lines
                       final fullTextPainter = TextPainter(
                         text: TextSpan(
                           children: [
@@ -706,7 +666,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
 
                       final exceedsTwoLines = fullTextPainter.didExceedMaxLines;
 
-                      // Step 2: If it does, calculate visible substring so "Mehr anzeigen" fits
                       String visibleDescription = description;
                       if (!_descExpanded && exceedsTwoLines) {
                         final charList = description.characters;
@@ -745,7 +704,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                         }
                         visibleDescription = charList.take(bestIndex).toString();
                       }
-                      // Step 3: Build RichText
                       return GestureDetector(
                         onTap: exceedsTwoLines
                             ? () => setState(() => _descExpanded = !_descExpanded)

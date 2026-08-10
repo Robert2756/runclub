@@ -36,8 +36,6 @@ class _RunCardState extends State<RunCard> {
 
   @override
   Widget build(BuildContext context) {
-    final dateTime = DateTime.tryParse("${post.date} ${post.time}") ?? DateTime.now();
-
     return GestureDetector(
       onTap: widget.onTap,
       child: Padding(

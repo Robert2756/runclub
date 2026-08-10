@@ -150,6 +150,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       meetingPoint: response['meeting_point']
     );
 
+    debugPrint("Starts at: ${loadedPost.startsAt}");
+
     final results = await Future.wait([
       supabase
           .from('activity_participants')
@@ -1864,8 +1866,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                       ),
                       Text(
                         post!.activity == "Run" 
-                        ? "Lauf ${dataFormatter.activityRelativeTimeOnlyDays(DateTime.parse(post!.startsAt!))}"
-                        : "Radfahrt ${dataFormatter.activityRelativeTimeOnlyDays(DateTime.parse(post!.startsAt!))}",
+                        ? "Lauf ${dataFormatter.activityRelativeTimeOnlyDays(DateTime.parse(post!.startsAt!).toLocal())}"
+                        : "Radfahrt ${dataFormatter.activityRelativeTimeOnlyDays(DateTime.parse(post!.startsAt!).toLocal())}",
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey[700],
@@ -1952,7 +1954,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                 child: _stat("Tag",
                   post!.startsAt != null
                       ? dataFormatter.formatActivityDate(
-                          DateTime.parse(post!.startsAt!))
+                          DateTime.parse(post!.startsAt!).toLocal())
                       : "-",
                 ),
               ),
@@ -1960,7 +1962,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                 child: _stat("Zeit",
                   post!.startsAt != null
                       ? "${dataFormatter.formatTime(
-                          DateTime.parse(post!.startsAt!))} Uhr"
+                          DateTime.parse(post!.startsAt!).toLocal())} Uhr"
                       : "—",
                 ),
               ),
