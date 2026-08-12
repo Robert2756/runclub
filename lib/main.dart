@@ -11,6 +11,7 @@ import 'checkEmailPage.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/scheduler.dart';
 import 'auth_loading_page.dart';
+import 'reset_password_page.dart';
 
 
 final supabase = Supabase.instance.client;
@@ -30,6 +31,9 @@ void main() async {
     if (uri.scheme == 'com.enduvo.app' && uri.host == 'login-callback') {
       debugPrint("Manually handling deep link: $uri");
 
+      final isRecovery = uri.queryParameters['type'] == 'recovery' ||
+        uri.fragment.contains('type=recovery');
+
       try {
         Session? session;
 
@@ -48,7 +52,7 @@ void main() async {
           }
         }
 
-        if (session != null) {
+        if (session != null && !isRecovery) {
           await _handlePostAuthNavigation(session.user);
         }
       } catch (e) {
@@ -61,9 +65,21 @@ void main() async {
     debugPrint("AUTH EVENT: ${data.event}, session: ${data.session != null}");
     final event = data.event;
 
+    if (event == AuthChangeEvent.passwordRecovery) {
+      debugPrint("NAV: password recovery event, opening ResetPasswordPage");
+      navigatorKey.currentState?.push(
+        MaterialPageRoute(builder: (_) => const ResetPasswordPage()),
+      );
+      return;
+    }
+
     if (event != AuthChangeEvent.signedIn &&
         event != AuthChangeEvent.initialSession) {
       return;
+    }
+
+    if (event == AuthChangeEvent.passwordRecovery) {
+
     }
 
     final user = data.session?.user;

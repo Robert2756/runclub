@@ -43,13 +43,10 @@ class _CheckEmailPageState extends State<CheckEmailPage> {
         errorMessage = false;
       });
     } on AuthException catch (e) {
-      debugPrint(
-        'RESEND ERROR\nCode: ${e.code}\nStatus: ${e.statusCode}\nMessage: ${e.message}',
-      );
-
+      debugPrint('RESEND ERROR\nCode: ${e.code}\nStatus: ${e.statusCode}\nMessage: ${e.message}');
       if (!mounted) return;
 
-      final isRateLimited = e.statusCode == '429';
+      final isRateLimited = e.code == 'over_email_send_rate_limit';
 
       setState(() {
         errorMessage = true;

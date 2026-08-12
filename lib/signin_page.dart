@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signup_page.dart';
 import 'checkEmailPage.dart';
 import 'auth_loading_page.dart';
+import 'forgot_password_page.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -214,12 +215,11 @@ class _SignInPageState extends State<SignInPage> {
                     ),
 
                     TextButton(
-                      onPressed: () {
-                        // later hook password reset flow
-                      },
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.black,
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
                       ),
+                      style: TextButton.styleFrom(foregroundColor: Colors.black),
                       child: const Text("Passwort vergessen"),
                     ),
                   ],
