@@ -62,7 +62,7 @@ dependencies:
 
 dev_dependencies:
   flutter_launcher_icons: ^0.13.1
-  flutter_native_splash: ^2.4.1
+  flutter_native_splash: ^2.4.7
   flutter_test:
     sdk: flutter
 
@@ -85,7 +85,9 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/EnduvoLogo.png
+    - assets/EnduvoLogo10.png
+    - assets/EnduvoLogoAndroid12.png
+    - assets/EnduvoInAppLogo1152x1152.png
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
@@ -119,16 +121,18 @@ flutter:
 
 flutter_native_splash:
   color: "#ffffff"
-  image: assets/EnduvoLogo.png
-
+  image: assets/EnduvoCoverAndroid.png       # 1000x1000px (mine 1024x1024) logo-only, centered within safe circle
+  branding: assets/EnduvoBranding.png  # 800x320px, text-only, for legacy Android
   android: true
   ios: true
 
   android_12:
     color: "#ffffff"
-    image: assets/EnduvoLogo.png
+    image: assets/EnduvoLogoAndroid12.png   # 1152x1152, logo only, centered within safe circle
+    icon_background_color: "#ffffff"
+    branding: assets/EnduvoBranding.png      # same 800x320 branding image, shown below the icon
 
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/EnduvoLogo.png
+  image_path: assets/EnduvoLogo10.png

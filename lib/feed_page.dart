@@ -37,7 +37,7 @@ class FeedPageState extends State<FeedPage> {
   Map<String, bool> showImageMap = {};
 
   LocationSource _locationSource = LocationSource.gps;
-  String _locationLabel = 'Locating…';
+  String _locationLabel = 'Suchen...';
   
   double? _userLat;
   double? _userLon;

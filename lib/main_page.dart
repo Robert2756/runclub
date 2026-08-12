@@ -122,22 +122,34 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppAppBar(
-        title: Text(
-          // "RunClub",
-          "Enduvo",
-          style: GoogleFonts.bebasNeue(
-            fontSize: 28,
-            letterSpacing: 1.5,
-          ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/EnduvoInAppLogo1152x1152.png',
+              height: 28,
+              width: 28,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              "Enduvo",
+              // style: GoogleFonts.bebasNeue(
+              //   fontSize: 28,
+              //   letterSpacing: 1.5,
+              // ),
+              style: GoogleFonts.archivoBlack(
+                fontSize: 22,
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w300,
+              ),
+              // style: GoogleFonts.archivoNarrow(
+              //   fontSize: 24,
+              //   fontWeight: FontWeight.w900,
+              //   letterSpacing: 1,
+              // ),
+            ),
+          ],
         ),
-        // title: Text(
-        //   "Entdecken",
-        //   style: GoogleFonts.inter(
-        //     fontSize: 28,
-        //     fontWeight: FontWeight.w700,
-        //     letterSpacing: 0.2,
-        //   ),
-        // ),
         actions: [
           IconButton(
             icon: const Icon(Icons.search),

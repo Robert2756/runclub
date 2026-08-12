@@ -74,12 +74,12 @@
 		<false/>
 		<key>CFBundleURLTypes</key>
 		<array>
-		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array>
-			<string>com.enduvo.app</string>
-			</array>
-		</dict>
+			<dict>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>com.enduvo.app</string>
+				</array>
+			</dict>
 		</array>
 	</dict>
 </plist>
