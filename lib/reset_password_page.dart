@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ResetPasswordPage extends StatefulWidget {
-  const ResetPasswordPage({super.key});
+  final VoidCallback onRecoveryFinished;
+
+  const ResetPasswordPage({
+    super.key,
+    required this.onRecoveryFinished
+  });
 
   @override
   State<ResetPasswordPage> createState() => _ResetPasswordPageState();
@@ -13,6 +18,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   final _confirmController = TextEditingController();
   bool _saving = false;
   String? _error;
+  bool _recoveryCompleted = false;
 
   Future<void> _submit() async {
     final password = _passwordController.text;
@@ -36,6 +42,8 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       await Supabase.instance.client.auth.updateUser(
         UserAttributes(password: password),
       );
+      _recoveryCompleted = true;
+      widget.onRecoveryFinished();
 
       // Don't carry the temporary recovery session into the app —
       // sign out and let the user log in with their new password.
@@ -60,6 +68,10 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
   @override
   void dispose() {
+    if (!_recoveryCompleted) {
+      widget.onRecoveryFinished();
+    }
+
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();

@@ -13,6 +13,11 @@ import 'package:flutter/scheduler.dart';
 import 'auth_loading_page.dart';
 import 'reset_password_page.dart';
 
+bool _passwordRecoveryInProgress = false;
+
+void endPasswordRecovery() {
+  _passwordRecoveryInProgress = false;
+}
 
 final supabase = Supabase.instance.client;
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
@@ -24,51 +29,66 @@ void main() async {
   await Supabase.initialize(
     url: 'https://wczdhrcvwlghrkjmskaa.supabase.co', 
     anonKey: 'sb_publishable_4M-s15nTEGZ7IflPJaRYgA_v2WvjakI',
-    debug: true
+    debug: true,
+    authOptions: const FlutterAuthClientOptions(
+    // We already handle all deep links manually via AppLinks below —
+    // Supabase's built-in observer was running in parallel with it,
+    // causing duplicate events and letting the recovery session leak
+    // into normal post-auth navigation.
+    detectSessionInUri: false,
+  ),
   );
   final appLinks = AppLinks();
+
+  // deep link arrives
   appLinks.uriLinkStream.listen((uri) async {
-    if (uri.scheme == 'com.enduvo.app' && uri.host == 'login-callback') {
-      debugPrint("Manually handling deep link: $uri");
+    debugPrint("Deep link arrived: $uri");
 
-      final isRecovery = uri.queryParameters['type'] == 'recovery' ||
-        uri.fragment.contains('type=recovery');
+    if (uri.scheme != 'com.enduvo.app' ||
+        uri.host != 'login-callback') {
+      return;
+    }
 
-      try {
-        Session? session;
+    debugPrint("Handling PKCE deep link: $uri");
 
-        if (uri.queryParameters.containsKey('code')) {
-          final response = await supabase.auth.getSessionFromUrl(uri);
-          session = response.session;
-          debugPrint("PKCE session recovery SUCCEEDED");
-        } else if (uri.fragment.contains('access_token')) {
-          final fragment = Uri.splitQueryString(uri.fragment);
-          final refreshToken = fragment['refresh_token'];
+    try {
+      // Session? session;
 
-          if (refreshToken != null) {
-            final response = await supabase.auth.setSession(refreshToken);
-            session = response.session;
-            debugPrint("Implicit session recovery SUCCEEDED");
-          }
-        }
+      if (uri.queryParameters.containsKey('code')) {
+        await supabase.auth.getSessionFromUrl(uri);
+        debugPrint("PKCE code exchanged successfully");
+      } 
+      // else if (uri.fragment.contains('access_token')) {
+      //   debugPrint("Implicit handling: $uri");
+      //   final fragment = Uri.splitQueryString(uri.fragment);
+      //   final refreshToken = fragment['refresh_token'];
 
-        if (session != null && !isRecovery) {
-          await _handlePostAuthNavigation(session.user);
-        }
-      } catch (e) {
-        debugPrint("Manual session recovery FAILED: $e");
-      }
+      //   if (refreshToken != null) {
+      //     final response = await supabase.auth.setSession(refreshToken);
+      //     session = response.session;
+      //   }
+      // }
+    } catch (e) {
+      debugPrint("PKCE session recovery FAILED: $e");
     }
   });
 
+  // user clicked link in email
   supabase.auth.onAuthStateChange.listen((data) async {
     debugPrint("AUTH EVENT: ${data.event}, session: ${data.session != null}");
     final event = data.event;
 
     if (event == AuthChangeEvent.passwordRecovery) {
+      if (_passwordRecoveryInProgress) return; // ignore duplicate fires
+      _passwordRecoveryInProgress = true;
+
       debugPrint("NAV: password recovery event, opening ResetPasswordPage");
       navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => const ResetPasswordPage()),
+        MaterialPageRoute(builder: (_) => ResetPasswordPage(
+          onRecoveryFinished: () {
+            _passwordRecoveryInProgress = false;
+          },
+        )),
       );
       return;
     }
@@ -78,8 +98,9 @@ void main() async {
       return;
     }
 
-    if (event == AuthChangeEvent.passwordRecovery) {
-
+    if (_passwordRecoveryInProgress) {
+      debugPrint("NAV: ignoring $event — password recovery still in progress");
+      return;
     }
 
     final user = data.session?.user;
