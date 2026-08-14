@@ -107,7 +107,10 @@ void main() async {
     if (user == null) return;
 
     await _handlePostAuthNavigation(user);
-  });
+  }, onError: (error, stackTrace) {
+    debugPrint("AUTH STREAM ERROR: $error");
+    debugPrintStack(stackTrace: stackTrace);
+  },);
 
   // Enable edge-to-edge mode
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

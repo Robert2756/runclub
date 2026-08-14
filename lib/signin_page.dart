@@ -35,7 +35,7 @@ class _SignInPageState extends State<SignInPage> {
     try {
       await supabase.auth.signInWithPassword(
         email: emailController.text.trim(),
-        password: passwordController.text.trim(),
+        password: passwordController.text,
       );
 
       // if (response.user != null && mounted) {
@@ -45,12 +45,12 @@ class _SignInPageState extends State<SignInPage> {
       //   );
       // }
 
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const AuthLoadingPage()),
-          (route) => false,
-        );
-      }
+      // if (mounted) {
+      //   Navigator.of(context).pushAndRemoveUntil(
+      //     MaterialPageRoute(builder: (_) => const AuthLoadingPage()),
+      //     (route) => false,
+      //   );
+      // }
 
     } on AuthException catch (e) {
       debugPrint("Sign in error: ${e.code} — ${e.message}");
