@@ -89,6 +89,7 @@ flutter:
     - assets/EnduvoLogo10.png
     - assets/EnduvoLogoAndroid12.png
     - assets/EnduvoInAppLogo1152x1152.png
+    - assets/EnduvoInAppLogo1152x1152-2.png
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

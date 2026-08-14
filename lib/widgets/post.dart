@@ -358,6 +358,28 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     );
   }
 
+  // Widget _buildChip(IconData icon, String label) {
+  //   return Row(
+  //     mainAxisSize: MainAxisSize.min,
+  //     children: [
+  //       Icon(
+  //         icon,
+  //         size: 18,
+  //         color: Colors.grey.shade600,
+  //       ),
+  //       const SizedBox(width: 5),
+  //       Text(
+  //         label,
+  //         style: TextStyle(
+  //           fontSize: 13,
+  //           fontWeight: FontWeight.w600,
+  //           color: Colors.grey.shade700,
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
+
   void _openActivity() async {
     final refreshPost = await Navigator.push(
       context,

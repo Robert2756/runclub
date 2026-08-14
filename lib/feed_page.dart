@@ -14,6 +14,20 @@ import 'services/location_picker.dart';
 final supabase = Supabase.instance.client;
 final imageService = ImageService();
 
+// Brand palette, pulled from the Enduvo logo gradient.
+class EnduvoColors {
+  static const navy = Color(0xFF0A2647);
+  static const deepBlue = Color(0xFF12406B);
+  static const teal = Color(0xFF2E9DC0);
+  static const gold = Color(0xFFF6C567);
+  static const white = Color(0xFFFFFFFF);
+  static const background = Color(0xFFF9FAFB);
+  static const surface = Color(0xFFFFFFFF);
+  static const border = Color(0xFFE5E7EB);
+  static const muted = Color(0xFF6B7280);
+  static const text = Color(0xFF111827);
+}
+
 enum FeedStatus {
   idle,
   loadingInitial,
@@ -604,10 +618,10 @@ class FeedPageState extends State<FeedPage> {
         ),
       ),
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 0),
+        padding: const EdgeInsets.all(4.0),
         child: SizedBox(
-          width: 56,
-          height: 56,
+          width: 58,
+          height: 58,
           child: FloatingActionButton(
             onPressed: () async {
               final newPostPinned = await Navigator.push(
@@ -635,7 +649,7 @@ class FeedPageState extends State<FeedPage> {
                 await _refreshFeed();
               }
             },
-            backgroundColor: Colors.black,
+            backgroundColor: EnduvoColors.navy, // Colors.black,
             foregroundColor: Colors.white,
             child: const Icon(Icons.add, size: 24),
           ),

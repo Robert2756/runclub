@@ -17,9 +17,7 @@ class OnboardingPage extends StatefulWidget {
   State<OnboardingPage> createState() => _OnboardingPageState();
 }
 
-
 class _OnboardingPageState extends State<OnboardingPage> {
-
   final PageController _pageController = PageController();
 
   int currentStep = 0;
@@ -35,7 +33,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
   bool usernameValid = true;
   String? error;
 
-
   @override
   void dispose() {
     _pageController.dispose();
@@ -46,9 +43,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     super.dispose();
   }
 
-
   Future<bool> checkUsernameAvailable(String username) async {
-
     if (username.isEmpty) return false;
 
     final result = await supabase
@@ -59,11 +54,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
     return (result as List).isEmpty;
   }
 
-
   void nextPage() async {
-
     if (currentStep == 0) {
-
       final username = usernameController.text.trim();
       final name = nameController.text.trim();
 
@@ -74,10 +66,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
         return;
       }
 
-
-      final available =
-          await checkUsernameAvailable(username);
-
+      final available = await checkUsernameAvailable(username);
 
       if (!available) {
         setState(() {
@@ -92,63 +81,48 @@ class _OnboardingPageState extends State<OnboardingPage> {
       });
     }
 
-
     if (currentStep < 2) {
-
       _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
-
     } else {
-
       await finishOnboarding();
-
     }
   }
 
   void _showExitSetupDialog() {
-
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.25),
       builder: (context) {
-
         return Dialog(
           backgroundColor: Colors.white,
           insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
           ),
-
           child: Padding(
-            padding: const EdgeInsets.all(24),
-
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-
               children: [
-
+                // Subtle brand accent
                 Container(
-                  height: 52,
-                  width: 52,
-
+                  height: 54,
+                  width: 54,
                   decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    shape: BoxShape.circle,
+                    color: const Color(0xFFEAF3F7),
+                    borderRadius: BorderRadius.circular(17),
                   ),
-
                   child: const Icon(
-                    Icons.person_outline,
-                    size: 26,
-                    color: Colors.black,
+                    Icons.person_outline_rounded,
+                    size: 27,
+                    color: EnduvoColors.deepBlue,
                   ),
                 ),
 
-
                 const SizedBox(height: 18),
-
 
                 const Text(
                   "Profil erstellen abbrechen?",
@@ -156,155 +130,122 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
+                    color: EnduvoColors.text,
+                    letterSpacing: -0.2,
                   ),
                 ),
-
 
                 const SizedBox(height: 10),
 
-
                 Text(
-                  "Dein Profil ist noch nicht fertig eingerichtet. "
+                  "Dein Profil ist noch nicht fertig. \n"
                   "Du kannst später weitermachen.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.grey[600],
-                    height: 1.4,
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                    height: 1.45,
                   ),
                 ),
 
-
                 const SizedBox(height: 24),
 
-
                 SizedBox(
-                  width: double.infinity,
-                  height: 46,
-
+                  width: 200, // double.infinity,
+                  height: 48,
                   child: ElevatedButton(
                     onPressed: () {
-
                       Navigator.pop(context);
-
                     },
-
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
+                      backgroundColor: EnduvoColors.text,
                       foregroundColor: Colors.white,
-
                       elevation: 0,
-
+                      shadowColor: Colors.transparent,
+                      padding: EdgeInsets.zero,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-
                     child: const Text(
                       "Weiter einrichten",
                       style: TextStyle(
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                 ),
 
-
-                const SizedBox(height: 10),
-
+                const SizedBox(height: 6),
 
                 SizedBox(
                   width: double.infinity,
-                  height: 46,
-
+                  height: 44,
                   child: TextButton(
-
                     onPressed: () async {
                       await supabase.auth.signOut();
                       if (!mounted) return;
                       context.go('/signin');
                     },
-
                     style: TextButton.styleFrom(
-                      foregroundColor: Colors.grey[600],
+                      foregroundColor: Colors.grey.shade600,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-
                     child: const Text(
                       "Abmelden",
                       style: TextStyle(
+                        fontSize: 14,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-
                   ),
                 ),
-
               ],
-
             ),
-
           ),
-
         );
-
       },
     );
-
   }
 
-
   void previousPage() {
-
     if (currentStep == 0) {
       _showExitSetupDialog();
-
     } else {
-
       _pageController.previousPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
-
     }
   }
 
-
-
   Future<void> finishOnboarding() async {
-
     setState(() {
       loading = true;
     });
 
-
     try {
-
       final user = supabase.auth.currentUser;
 
       if (user == null) {
         throw Exception("Nicht eingeloggt");
       }
 
-
       String? avatarUrl;
 
-
       if (profileImage != null) {
-
         final path = "${user.id}.png";
 
-
-        await supabase.storage
-            .from('ProfileImages')
-            .upload(
-              path,
-              profileImage!,
-              fileOptions: const FileOptions(
-                upsert: true,
-              ),
-            );
+        await supabase.storage.from('ProfileImages').upload(
+          path,
+          profileImage!,
+          fileOptions: const FileOptions(
+            upsert: true,
+          ),
+        );
 
         avatarUrl = supabase.storage
             .from('ProfileImages')
@@ -314,40 +255,23 @@ class _OnboardingPageState extends State<OnboardingPage> {
       await supabase
           .from('profiles')
           .update({
-
-            'username':
-                usernameController.text.trim(),
-
-            'full_name':
-                nameController.text.trim(),
-
-            'bio':
-                bioController.text.trim(),
-
-            'town':
-                townController.text.trim(),
-
-            if (avatarUrl != null)
-              'avatar_url': avatarUrl,
-
-
+            'username': usernameController.text.trim(),
+            'full_name': nameController.text.trim(),
+            'bio': bioController.text.trim(),
+            'town': townController.text.trim(),
+            if (avatarUrl != null) 'avatar_url': avatarUrl,
             'onboarding_completed': true,
-
           })
           .eq('id', user.id);
 
       if (!mounted) return;
       context.go('/main');
-
-    } catch(e) {
-
+    } catch (e) {
       setState(() {
         error = e.toString();
       });
-
     } finally {
-
-      if(mounted) {
+      if (mounted) {
         setState(() {
           loading = false;
         });
@@ -355,491 +279,360 @@ class _OnboardingPageState extends State<OnboardingPage> {
     }
   }
 
-    // upload profile image
-  Future<void> uploadProfileImage(String userId, File? compressedImage) async {
+  // upload profile image
+  Future<void> uploadProfileImage(
+    String userId,
+    File? compressedImage,
+  ) async {
     if (compressedImage == null) return;
-    final path = '$userId.png'; // lowercase bucket name
+
+    final path = '$userId.png';
 
     await supabase.storage.from('ProfileImages').upload(
       path,
       compressedImage,
       fileOptions: FileOptions(upsert: true),
     );
-    // Get public URL as string
-    final url = supabase.storage.from('ProfileImages').getPublicUrl(path);
-    // Save URL in profile table
-    await supabase.from('profiles').update({'avatar_url': url}).eq('id', userId);
+
+    final url = supabase.storage
+        .from('ProfileImages')
+        .getPublicUrl(path);
+
+    await supabase
+        .from('profiles')
+        .update({'avatar_url': url})
+        .eq('id', userId);
   }
 
   void pickImage() async {
     File? compressedImage;
+
     final File? pickedImage = await imageService.pickImage();
     final userId = supabase.auth.currentUser!.id;
+
     if (pickedImage != null) {
-      final File? cropedImage = await imageService.cropImageWithUI(pickedImage);
+      final File? cropedImage =
+          await imageService.cropImageWithUI(pickedImage);
+
       if (cropedImage != null) {
-        compressedImage = await imageService.compressImage(cropedImage);
+        compressedImage =
+            await imageService.compressImage(cropedImage);
       }
-      // Upload to Supabase storage then update profile image
+
       try {
         await uploadProfileImage(userId, compressedImage);
-        // update UI
+
         setState(() {
           profileImage = compressedImage;
         });
       } catch (e) {
         debugPrint('Upload failed: $e');
-        // show error message in UI
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to upload profile image.')),
+          const SnackBar(
+            content: Text('Failed to upload profile image.'),
+          ),
         );
       }
     }
   }
 
-
-
   @override
   Widget build(BuildContext context) {
-
-
     return Scaffold(
-
-      backgroundColor: Colors.white,
-
-
+      backgroundColor: const Color(0xFFF6F8FB),
       body: SafeArea(
-
         child: Column(
-
           children: [
-
-
+            // Minimal progress indicator.
             Padding(
-              padding: const EdgeInsets.only(
-                top: 20,
-              ),
-              child: Text(
-                "${currentStep + 1}/3",
-                style: TextStyle(
-                  color: Colors.grey[500],
-                  fontWeight: FontWeight.w600,
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+              child: Row(
+                children: List.generate(
+                  3,
+                  (index) {
+                    final active = index <= currentStep;
+
+                    return Expanded(
+                      child: Container(
+                        height: 3,
+                        margin: EdgeInsets.only(
+                          right: index < 2 ? 6 : 0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: active
+                              ? EnduvoColors.deepBlue
+                              : EnduvoColors.border,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
 
-
-
             Expanded(
-
               child: PageView(
-
                 controller: _pageController,
-
-                physics:
-                    const NeverScrollableScrollPhysics(),
-
-
-                onPageChanged: (index){
-
+                physics: const NeverScrollableScrollPhysics(),
+                onPageChanged: (index) {
                   setState(() {
                     currentStep = index;
                   });
-
                 },
-
-
                 children: [
-
                   buildIdentityStep(),
-
                   buildAboutStep(),
-
                   buildImageStep(),
-
                 ],
-
               ),
-
             ),
 
-
-
             Padding(
-
-              padding: const EdgeInsets.all(20),
-
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
               child: Row(
-
                 children: [
-
                   Expanded(
-
                     child: TextButton(
-
                       onPressed: previousPage,
-
+                      style: TextButton.styleFrom(
+                        foregroundColor: EnduvoColors.text,
+                        minimumSize: const Size(0, 50),
+                      ),
                       child: const Text(
                         "Zurück",
                         style: TextStyle(
-                          color: Colors.black,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-
                     ),
-
                   ),
-
-
-
+                  const SizedBox(width: 10),
                   Expanded(
-
-                    child: ElevatedButton(
-
-                      onPressed:
-                          loading ? null : nextPage,
-
-
-                      style:
-                          ElevatedButton.styleFrom(
-
-                        backgroundColor:
-                            Colors.black,
-
-                        foregroundColor:
-                            Colors.white,
-
-                        shape:
-                            RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(14),
-                            ),
-
-                      ),
-
-
-                      child:
-
-                      loading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child:
-                              CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
+                    child: SizedBox(
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: loading ? null : nextPage,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: EnduvoColors.text,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor:
+                              EnduvoColors.text.withOpacity(0.65),
+                          disabledForegroundColor: Colors.white,
+                          elevation: 0,
+                          shadowColor: Colors.transparent,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: loading
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                currentStep == 2
+                                    ? "Profil erstellen"
+                                    : "Weiter",
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            )
-
-                          : Text(
-                              currentStep == 2
-                                  ? "Profil erstellen"
-                                  : "Weiter",
-                            ),
-
+                      ),
                     ),
-
                   ),
-
                 ],
-
               ),
-
-            )
-
+            ),
           ],
-
         ),
-
       ),
-
     );
   }
 
-
-
-
-  Widget buildIdentityStep(){
-
+  Widget buildIdentityStep() {
     return buildCard(
-
       title: "Erstelle dein Profil",
-
-      subtitle:
-          "Damit andere dich erkennen können.",
-
-
+      subtitle: "Damit andere dich erkennen können.",
       children: [
-
         modernField(
           "Username",
           usernameController,
           Icons.alternate_email,
         ),
-
-
-        const SizedBox(height:14),
-
-
+        const SizedBox(height: 14),
         modernField(
           "Name",
           nameController,
           Icons.person_outline,
         ),
-
-
       ],
-
     );
-
   }
 
-
-
-
-
-  Widget buildAboutStep(){
-
+  Widget buildAboutStep() {
     return buildCard(
-
-      title:
-          "Erzähl etwas über dich",
-
-      subtitle:
-          "Hilf anderen, dich kennenzulernen.",
-
-
+      title: "Erzähl etwas über dich",
+      subtitle: "Hilf anderen, dich kennenzulernen.",
       children: [
-
         modernField(
           "Beschreibung",
           bioController,
           Icons.notes,
           maxLines: 3,
         ),
-
-
-        const SizedBox(height:14),
-
-
+        const SizedBox(height: 14),
         modernField(
           "Ort",
           townController,
           Icons.location_on_outlined,
         ),
-
       ],
-
     );
-
   }
 
-
-
-
-
-  Widget buildImageStep(){
-
+  Widget buildImageStep() {
     return buildCard(
-
-      title:
-          "Zeige dein Gesicht",
-
-      subtitle:
-          "Ein Profilbild macht dein Profil persönlicher.",
-
-
+      title: "Zeige dein Gesicht",
+      subtitle: "Ein Profilbild macht dein Profil persönlicher.",
       children: [
-
         GestureDetector(
-
           onTap: pickImage,
-
           child: CircleAvatar(
-
             radius: 55,
-
-            backgroundColor:
-                Colors.grey[200],
-
-
-            backgroundImage:
-                profileImage != null
+            backgroundColor: Colors.grey[200],
+            backgroundImage: profileImage != null
                 ? FileImage(profileImage!)
                 : null,
-
-
-            child:
-                profileImage == null
+            child: profileImage == null
                 ? const Icon(
                     Icons.add_a_photo_outlined,
                     size: 32,
                   )
                 : null,
-
           ),
-
         ),
-
       ],
-
     );
-
   }
 
-
-
-
-
   Widget buildCard({
-
     required String title,
     required String subtitle,
     required List<Widget> children,
-
-  }){
-
-
+  }) {
     return Center(
-
       child: SingleChildScrollView(
-
-        padding:
-            const EdgeInsets.all(20),
-
-
-        child: Container(
-
-          padding:
-              const EdgeInsets.all(24),
-
-
-          decoration:
-              BoxDecoration(
-
-            color:
-                Colors.grey[50],
-
-
-            borderRadius:
-                BorderRadius.circular(20),
-
-          ),
-
-
-          child: Column(
-
-            children: [
-
-              Text(
-                title,
-                style:
-                    const TextStyle(
-                      fontSize:24,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-              ),
-
-
-              const SizedBox(height:10),
-
-
-              Text(
-                subtitle,
-                textAlign:
-                    TextAlign.center,
-                style:
-                    TextStyle(
-                      color:
-                          Colors.grey[600],
-                    ),
-              ),
-
-
-              const SizedBox(height:25),
-
-
-              ...children,
-
-              if(error != null) ...[
-
-                const SizedBox(height:15),
-
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Container(
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                 Text(
-                  error!,
-                  style:
-                      const TextStyle(
-                        color: Colors.red,
-                      ),
-                )
-
-              ]
-
-            ],
-
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: EnduvoColors.text,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 26),
+                ...children,
+                if (error != null) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-
         ),
-
       ),
-
     );
-
   }
 
-
-
-
   Widget modernField(
-
     String label,
     TextEditingController controller,
     IconData icon, {
-
     int maxLines = 1,
-
-  }){
-
-
+  }) {
     return TextField(
-
       controller: controller,
-
       maxLines: maxLines,
-
-
-      decoration:
-
-      InputDecoration(
-
+      decoration: InputDecoration(
         labelText: label,
-
-        prefixIcon:
-            Icon(icon),
-
-
-        filled:true,
-
-        fillColor:
-            Colors.white,
-
-
-        border:
-            OutlineInputBorder(
-
-          borderRadius:
-              BorderRadius.circular(14),
-
-          borderSide:
-              BorderSide.none,
-
+        prefixIcon: Icon(
+          icon,
+          color: Colors.black54,
+          size: 20,
         ),
-
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 16,
+          horizontal: 16,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: EnduvoColors.border,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: EnduvoColors.border,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: EnduvoColors.deepBlue,
+            width: 1.4,
+          ),
+        ),
+        labelStyle: const TextStyle(
+          color: EnduvoColors.muted,
+        ),
       ),
-
     );
-
   }
-
 }
