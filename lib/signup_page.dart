@@ -52,25 +52,32 @@ class _SignUpPageState extends State<SignUpPage> {
       );
 
       if (response.user != null) {
-        if (!mounted) return;
+        final identities = response.user!.identities;
 
+        if (identities != null && identities.isEmpty) {
+          // Email already exists and is confirmed — no new email was sent.
+          if (!mounted) return;
+          setState(() {
+            error = "Diese E-Mail-Adresse ist bereits registriert. "
+                "Bitte melde dich an oder setze dein Passwort zurück.";
+          });
+          return;
+        }
+
+        // Genuine new signup.
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (_) => CheckEmailPage(
-              email: email,
-            ),
-          ),
+          MaterialPageRoute(builder: (_) => CheckEmailPage(email: email)),
         );
       }
-
     } on AuthException catch (e) {
       // 👇 THIS is the important part
       debugPrint("Sign up error not mounted: ${e.toString()}");
       if (mounted) {
         debugPrint("Sign up error: ${e.toString()}");
         setState(() {
-          error = _mapAuthError(e.message);
+          error = _mapAuthError(e);
         });
       }
     } on SocketException {
@@ -128,9 +135,16 @@ class _SignUpPageState extends State<SignUpPage> {
     return null;
   }
 
-  String _mapAuthError(String msg) {
-    final lower = msg.toLowerCase();
-    debugPrint("Auth error: $msg");
+  String _mapAuthError(AuthException e) {
+    final lower = e.message.toLowerCase();
+    debugPrint("Auth error: ${e.code} — ${e.message}");
+
+    if (e.code == 'over_email_send_rate_limit') {
+      final seconds = _extractSeconds(e.message);
+      return seconds != null
+          ? "Bitte warte noch $seconds Sekunden, bevor du eine neue E-Mail anforderst oder bestätige die vorherige."
+          : "Bitte warte kurz, bevor du eine neue E-Mail anforderst.";
+    }
 
     if (lower.contains("already registered") ||
         lower.contains("already exists")) {
@@ -142,6 +156,11 @@ class _SignUpPageState extends State<SignUpPage> {
     }
 
     return "Registrierung fehlgeschlagen. Bitte versuche es erneut.";
+  }
+
+  int? _extractSeconds(String message) {
+    final match = RegExp(r'(\d+)\s*seconds?').firstMatch(message);
+    return match != null ? int.tryParse(match.group(1)!) : null;
   }
 
   @override

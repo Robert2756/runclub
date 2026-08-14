@@ -1,12 +1,11 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'main_page.dart';
 import 'signin_page.dart';
 import 'services/image_service.dart';
+import 'package:go_router/go_router.dart';
 
 final imageService = ImageService();
 final supabase = Supabase.instance.client;
@@ -220,20 +219,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   child: TextButton(
 
                     onPressed: () async {
-
                       await supabase.auth.signOut();
-
                       if (!mounted) return;
-
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(
-                          builder: (_) => const SignInPage(),
-                        ),
-                        (route) => false,
-                      );
-
+                      context.go('/signin');
                     },
-
 
                     style: TextButton.styleFrom(
                       foregroundColor: Colors.grey[600],
@@ -317,13 +306,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
               ),
             );
 
-
         avatarUrl = supabase.storage
             .from('ProfileImages')
             .getPublicUrl(path);
       }
-
-
 
       await supabase
           .from('profiles')
@@ -350,18 +336,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
           })
           .eq('id', user.id);
 
-
-
       if (!mounted) return;
-
-
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => const MainPage(),
-        ),
-        (_) => false,
-      );
-
+      context.go('/main');
 
     } catch(e) {
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:go_router/go_router.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   final VoidCallback onRecoveryFinished;
@@ -18,7 +19,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   final _confirmController = TextEditingController();
   bool _saving = false;
   String? _error;
-  bool _recoveryCompleted = false;
+  // bool _recoveryCompleted = false;
 
   Future<void> _submit() async {
     final password = _passwordController.text;
@@ -42,15 +43,11 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       await Supabase.instance.client.auth.updateUser(
         UserAttributes(password: password),
       );
-      _recoveryCompleted = true;
-      widget.onRecoveryFinished();
-
-      // Don't carry the temporary recovery session into the app —
-      // sign out and let the user log in with their new password.
       await Supabase.instance.client.auth.signOut();
 
       if (!mounted) return;
-      Navigator.of(context).pop(); // back to AuthGate -> SignInPage
+      context.go('/signin');
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Passwort wurde aktualisiert. Bitte melde dich an.')),
       );
@@ -61,17 +58,23 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             ? 'Das neue Passwort muss sich vom alten unterscheiden.'
             : 'Das Passwort konnte nicht aktualisiert werden. Bitte versuche es erneut.';
       });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _error = 'Etwas ist schiefgelaufen. Bitte versuche es erneut.';
+      });
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+        });
+      }
     }
   }
 
   @override
   void dispose() {
-    if (!_recoveryCompleted) {
-      widget.onRecoveryFinished();
-    }
-
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();

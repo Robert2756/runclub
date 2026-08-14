@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:run_club/main_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signup_page.dart';
-import 'checkEmailPage.dart';
-import 'auth_loading_page.dart';
 import 'forgot_password_page.dart';
+import 'package:go_router/go_router.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -22,10 +20,6 @@ class _SignInPageState extends State<SignInPage> {
   bool loading = false;
   String? error;
 
-  // simple client-side cooldown so we don't hammer Supabase's resend rate limit
-  DateTime? _lastResendAttempt;
-  static const _resendCooldown = Duration(seconds: 60);
-
   Future<void> signIn() async {
     setState(() {
       loading = true;
@@ -38,27 +32,13 @@ class _SignInPageState extends State<SignInPage> {
         password: passwordController.text,
       );
 
-      // if (response.user != null && mounted) {
-      //   Navigator.of(context).pushAndRemoveUntil(
-      //     MaterialPageRoute(builder: (_) => const MainPage()),
-      //     (route) => false,
-      //   );
-      // }
-
-      // if (mounted) {
-      //   Navigator.of(context).pushAndRemoveUntil(
-      //     MaterialPageRoute(builder: (_) => const AuthLoadingPage()),
-      //     (route) => false,
-      //   );
-      // }
-
     } on AuthException catch (e) {
       debugPrint("Sign in error: ${e.code} — ${e.message}");
 
       if (e.code == 'email_not_confirmed') {
         await _handleUnconfirmedEmail();
       } else {
-        setState(() => error = e.message);
+        setState(() => error = _germanSignInError(e));
       }
     } finally {
       if (mounted) {
@@ -67,25 +47,40 @@ class _SignInPageState extends State<SignInPage> {
     }
   }
 
-  Future<void> _handleUnconfirmedEmail() async {
-    final now = DateTime.now();
-    final onCooldown = _lastResendAttempt != null &&
-        now.difference(_lastResendAttempt!) < _resendCooldown;
+  String _germanSignInError(AuthException e) {
+    switch (e.code) {
+      case 'invalid_credentials':
+        return "E-Mail oder Passwort ist falsch.";
 
-    if (onCooldown) {
-      // Don't call Supabase again — just send them to check their inbox,
-      // the earlier email is still valid.
-      if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => CheckEmailPage(email: emailController.text.trim()),
-        ),
-      );
-      return;
+      case 'user_not_found':
+        return "Für diese E-Mail-Adresse existiert kein Konto.";
+
+      case 'user_banned':
+        return "Dieses Konto wurde gesperrt. Bitte kontaktiere den Support.";
+
+      case 'over_request_rate_limit':
+        return "Zu viele Anfragen. Bitte versuche es in ein paar Minuten erneut.";
+
+      case 'over_email_send_rate_limit':
+        final seconds = _extractSeconds(e.message);
+        return seconds != null
+            ? "Bitte warte noch $seconds Sekunden."
+            : "Bitte warte kurz und versuche es erneut.";
+
+      case 'weak_password':
+        return "Das Passwort ist zu schwach.";
+
+      case 'validation_failed':
+        return "Bitte überprüfe deine Eingaben.";
+
+      default:
+        debugPrint("Unmapped AuthException code: ${e.code} — ${e.message}");
+        return "Anmeldung fehlgeschlagen. Bitte versuche es erneut.";
     }
+  }
 
+  Future<void> _handleUnconfirmedEmail() async {
     try {
-      _lastResendAttempt = now;
       await supabase.auth.resend(
         type: OtpType.signup,
         email: emailController.text.trim(),
@@ -93,20 +88,35 @@ class _SignInPageState extends State<SignInPage> {
       debugPrint("RESEND SUCCESS for ${emailController.text.trim()}");
 
       if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => CheckEmailPage(email: emailController.text.trim()),
-        ),
-      );
+      context.go('/check-email?email=${Uri.encodeComponent(emailController.text.trim())}');
     } on AuthException catch (resendError) {
       debugPrint("RESEND FAILED: ${resendError.code} — ${resendError.message}");
+      if (!mounted) return;
 
       setState(() {
-        error = resendError.statusCode == '429'
-            ? "Zu viele Anfragen. Bitte prüfe dein Postfach oder versuche es in ein paar Minuten erneut."
-            : "E-Mail konnte nicht erneut gesendet werden.";
+        error = _germanResendError(resendError);
       });
     }
+  }
+
+  String _germanResendError(AuthException e) {
+    if (e.code == 'over_email_send_rate_limit') {
+      final seconds = _extractSeconds(e.message);
+      return seconds != null
+          ? "Bitte warte noch $seconds Sekunden, bevor du eine neue E-Mail anforderst oder bestätige die vorherige."
+          : "Bitte warte kurz, bevor du eine neue E-Mail anforderst.";
+    }
+
+    if (e.code == 'over_request_rate_limit' || e.statusCode == '429') {
+      return "Zu viele Anfragen. Bitte versuche es in ein paar Minuten erneut.";
+    }
+
+    return "E-Mail konnte nicht erneut gesendet werden. Bitte versuche es später erneut.";
+  }
+
+  int? _extractSeconds(String message) {
+    final match = RegExp(r'(\d+)\s*seconds?').firstMatch(message);
+    return match != null ? int.tryParse(match.group(1)!) : null;
   }
 
   Future<void> resendConfirmationEmail() async {
