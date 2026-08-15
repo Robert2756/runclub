@@ -14,6 +14,20 @@ import 'signin_page.dart';
 final imageService = ImageService();
 final supabase = Supabase.instance.client;
 
+class EnduvoColors {
+  static const navy = Color(0xFF0A2647);
+  static const deepBlue = Color(0xFF12406B);
+  static const teal = Color(0xFF2E9DC0);
+  static const gold = Color(0xFFF6C567);
+
+  static const white = Color(0xFFFFFFFF);
+  static const background = Color(0xFFF6F8FB);
+  static const surface = Color(0xFFFFFFFF);
+  static const border = Color(0xFFE5E7EB);
+  static const muted = Color(0xFF6B7280);
+  static const text = Color(0xFF111827);
+}
+
 class ProfileContent extends StatefulWidget {
   final bool isMe;
   final int togetherCount;
@@ -207,18 +221,23 @@ class _ProfileContentState extends State<ProfileContent> {
           Text(
             text,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-              color: active ? Colors.black : Colors.grey[500],
+              color: active
+                  ? EnduvoColors.text
+                  : EnduvoColors.muted,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 5),
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
             height: 2,
-            width: active ? 18 : 0,
+            width: active ? 20 : 0,
             decoration: BoxDecoration(
-              color: Colors.black,
+              color: active
+                ? EnduvoColors.text
+                : EnduvoColors.muted,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -339,7 +358,9 @@ class _ProfileContentState extends State<ProfileContent> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(
+              color: EnduvoColors.border,
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -350,8 +371,9 @@ class _ProfileContentState extends State<ProfileContent> {
                     : "Noch keine Aktivität erstellt",
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.w500,
+                  color: EnduvoColors.text,
                 ),
               ),
             ],
@@ -725,12 +747,16 @@ class ProfileHeader extends StatelessWidget {
                         // flight so it can't be triggered twice.
                         onTap: isUploadingAvatar ? null : onEditAvatar,
                         child: Container(
-                          padding: EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.black,
+                          padding: const EdgeInsets.all(6),
+                          decoration: const BoxDecoration(
+                            color: EnduvoColors.text,
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.edit, size: 14, color: Colors.white),
+                          child: const Icon(
+                            Icons.edit_outlined,
+                            size: 14,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
@@ -754,6 +780,7 @@ class ProfileHeader extends StatelessWidget {
                               style: const TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w700,
+                                color: EnduvoColors.text,
                               ),
                             ),
                           ),
@@ -761,9 +788,9 @@ class ProfileHeader extends StatelessWidget {
                             const SizedBox(width: 6),
                             Text(
                               "$age",
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 14,
-                                color: Colors.grey[500],
+                                color: EnduvoColors.muted,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -800,9 +827,9 @@ class ProfileHeader extends StatelessWidget {
                             flex: 2,
                             child: _ExpandableChip(
                               text: "@$userName",
-                              textStyle: TextStyle(
+                              textStyle: const TextStyle(
                                 fontSize: 13,
-                                color: Colors.grey[500],
+                                color: EnduvoColors.muted,
                               ),
                               backgroundColor: Colors.transparent,
                               padding: EdgeInsets.zero,
@@ -819,9 +846,14 @@ class ProfileHeader extends StatelessWidget {
           GestureDetector( 
             onTap: isMe ? onEditBio : null, 
             child: 
-            Text( bio ?? "Noch keine Bio", 
-              textAlign: TextAlign.center, 
-              style: TextStyle( fontSize: 13, color: Colors.grey[700], height: 1.4,),
+            Text(
+              bio ?? "Noch keine Bio",
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13.5,
+                color: EnduvoColors.muted,
+                height: 1.45,
+              ),
             )
           ),
           const SizedBox(height: 12),
@@ -831,22 +863,57 @@ class ProfileHeader extends StatelessWidget {
               child: OutlinedButton.icon(
                 onPressed: onEditBio,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.black, // text + icon
-                  side: const BorderSide(color: Colors.black), // border
+                  foregroundColor: EnduvoColors.text,
+                  side: const BorderSide(
+                    color: EnduvoColors.border,
+                  ),
+                  backgroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 11,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
-                icon: Icon(Icons.edit, size: 16),
-                label: Text("Profil bearbeiten"),
+                icon: const Icon(
+                  Icons.edit_outlined,
+                  size: 16,
+                ),
+                label: const Text(
+                  "Profil bearbeiten",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13.5,
+                  ),
+                ),
               ),
             ),
           if (!isMe)
             OutlinedButton(
               onPressed: onPrimaryAction,
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.black, // Text (and icon) color
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                minimumSize: const Size(0, 32),
+                foregroundColor: EnduvoColors.text,
+                side: const BorderSide(
+                  color: EnduvoColors.border,
+                ),
+                backgroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 9,
+                ),
+                minimumSize: const Size(0, 36),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
-              child: const Text("Einladen"),
+              child: const Text(
+                "Einladen",
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
 
           const SizedBox(height: 12),
@@ -1061,7 +1128,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                         width: MediaQuery.of(context).size.width * 0.92,
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: EnduvoColors.background,
                           borderRadius: BorderRadius.circular(24),
                         ),
                         child: Column(
@@ -1415,7 +1482,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: EnduvoColors.background, // Colors.white,
       appBar: AppAppBar(
         actions: [
           if (isMe) ...[
@@ -1450,55 +1517,75 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
           ],
         ],
       ),
-      body: _profileReady ?
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: RefreshIndicator(
-            color: Colors.black,
-            backgroundColor: Colors.white,
-            strokeWidth: 2.0,
-            onRefresh: _refreshProfile,
-            child: Column(
-              children: [
-                ProfileHeader(
-                  isMe: isMe,
-                  avatarUrl: _displayAvatarUrl,
-                  fullName: _fullName,
-                  userName: _userName,
-                  town: _town,
-                  bio: _bio,
-                  onEditAvatar: () => _editAvatar(),
-                  onEditBio: () => _editProfile(),
-                  togetherCount: _togetherCount,
-                  lastTogether: _lastTogether,
-                  onPrimaryAction: isMe ? () => _editProfile() : () => _inviteUser(),
-                  age: _age,
-                  isUploadingAvatar: _uploadingAvatar
-                ),
-                if (!isMe)
-                  SocialProofCard(
-                    togetherCount:_togetherCount,
-                    lastTogether: _lastTogether,
-                    username: "User",
+body: _profileReady
+    ? SafeArea(
+        child: RefreshIndicator(
+          color: Colors.black,
+          backgroundColor: Colors.white,
+          strokeWidth: 2.0,
+          onRefresh: _refreshProfile,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return Column(
+                children: [
+                  Flexible(
+                    flex: 0,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            ProfileHeader(
+                              isMe: isMe,
+                              avatarUrl: _displayAvatarUrl,
+                              fullName: _fullName,
+                              userName: _userName,
+                              town: _town,
+                              bio: _bio,
+                              onEditAvatar: _editAvatar,
+                              onEditBio: _editProfile,
+                              togetherCount: _togetherCount,
+                              lastTogether: _lastTogether,
+                              onPrimaryAction:
+                                  isMe ? _editProfile : _inviteUser,
+                              age: _age,
+                              isUploadingAvatar: _uploadingAvatar,
+                            ),
+
+                            if (!isMe) ...[
+                              const SizedBox(height: 12),
+                              SocialProofCard(
+                                togetherCount: _togetherCount,
+                                lastTogether: _lastTogether,
+                                username: "User",
+                              ),
+                            ],
+
+                            const SizedBox(height: 16),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
 
-                const SizedBox(height: 16),
-
-                Expanded(
-                  child: ProfileContent(
-                    isMe: isMe,
-                    profileId: widget.profileId,
-                    togetherCount: _togetherCount,
-                    lastTogether: _lastTogether,
+                  Expanded(
+                    child: ProfileContent(
+                      isMe: isMe,
+                      profileId: widget.profileId,
+                      togetherCount: _togetherCount,
+                      lastTogether: _lastTogether,
+                    ),
                   ),
-                ),
-              ],
-            )
+                ],
+              );
+            },
           ),
-        )
-      : const Center(
-        child: CircularProgressIndicator(),
+        ),
       )
+    : const Center(
+        child: CircularProgressIndicator(),
+      ),
     );
   }
 }
@@ -1528,8 +1615,10 @@ class _ModernField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolvedBorderColor = borderColor ?? Colors.grey.shade200;
-    final resolvedFocusColor = borderColor ?? Colors.black;
+    final resolvedBorderColor =
+        borderColor ?? EnduvoColors.border;
+    final resolvedFocusColor =
+        borderColor ?? EnduvoColors.deepBlue;
 
     return TextField(
       controller: controller,
@@ -1543,25 +1632,32 @@ class _ModernField extends StatelessWidget {
         suffixIcon: suffixIcon,
         counterText: "",
         filled: true,
-        fillColor: Colors.grey[50],
+        fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 14,
+          horizontal: 16,
+          vertical: 16,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: resolvedBorderColor),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: resolvedBorderColor,
+          ),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: resolvedBorderColor),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: resolvedBorderColor,
+          ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
             color: resolvedFocusColor,
-            width: borderColor != null ? 1.5 : 1,
+            width: 1.4,
           ),
+        ),
+        labelStyle: const TextStyle(
+          color: EnduvoColors.muted,
         ),
       ),
     );

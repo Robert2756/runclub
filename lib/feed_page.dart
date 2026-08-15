@@ -28,6 +28,119 @@ class EnduvoColors {
   static const text = Color(0xFF111827);
 }
 
+class EmptyFeedState extends StatelessWidget {
+  final String locationLabel;
+  final VoidCallback onCreateActivity;
+  final VoidCallback onChangeLocation;
+
+  const EmptyFeedState({
+    super.key,
+    required this.locationLabel,
+    required this.onCreateActivity,
+    required this.onChangeLocation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 500;
+
+        return Center(
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.symmetric(
+              horizontal: 28,
+              vertical: compact ? 12 : 16,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 300),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "Keine Aktivitäten in $locationLabel",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: EnduvoColors.text,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    "Starte einfach selbst eine.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.35,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+
+                  SizedBox(height: compact ? 16 : 18),
+
+                  SizedBox(
+                    height: 42,
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: onCreateActivity,
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text(
+                        "Aktivität erstellen",
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: EnduvoColors.text,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shadowColor: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  TextButton(
+                    onPressed: onChangeLocation,
+                    style: TextButton.styleFrom(
+                      foregroundColor: EnduvoColors.deepBlue,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                    ),
+                    child: const Text(
+                      "Standort ändern",
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+
+
+
 enum FeedStatus {
   idle,
   loadingInitial,
@@ -91,7 +204,7 @@ class FeedPageState extends State<FeedPage> {
     } else {
       await _initUserLocation();
       _locationSource = LocationSource.gps;
-      _locationLabel = 'Nearby'; // reverse-geocode later if you want the real city name
+      _locationLabel = 'Standort'; // reverse-geocode later if you want the real city name
     }
     await fetchCandidates();
   }
@@ -332,6 +445,13 @@ class FeedPageState extends State<FeedPage> {
       );
     }
 
+    if (candidatePool.isEmpty && posts.isEmpty && !_hasMore) {
+      setState(() {
+        _status = FeedStatus.exhausted;
+      });
+      return;
+    }
+
     setState(() {
       _status = FeedStatus.applyCandidates;
     });
@@ -550,6 +670,39 @@ class FeedPageState extends State<FeedPage> {
                                 child: Center(child: FeedRefreshSpinner()),
                               );
                             }
+                          }
+
+                          if (posts.isEmpty && _status == FeedStatus.exhausted) {
+                            return EmptyFeedState(
+                              locationLabel: _locationLabel,
+                              onCreateActivity: () async {
+                                final newPostPinned = await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const CreatePostPageV2(),
+                                  ),
+                                );
+
+                                if (newPostPinned != null) {
+                                  setState(() {
+                                    _hasMore = true;
+                                    _status = FeedStatus.loadingInitial;
+
+                                    posts.clear();
+                                    candidatePool.clear();
+                                    seenPostIds.clear();
+
+                                    _dbOffset = 0;
+                                    _radiusMeters = 2000;
+
+                                    _pinnedPost = newPostPinned as Post;
+                                  });
+
+                                  await _refreshFeed();
+                                }
+                              },
+                              onChangeLocation: _openLocationPicker,
+                            );
                           }
 
                           if (index < posts.length) {

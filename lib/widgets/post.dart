@@ -16,9 +16,35 @@ import 'post_placeholder.dart';
 import '../services/data_formatter.dart';
 import 'package:shimmer/shimmer.dart';
 import 'user_avatar.dart';
+import 'dart:ui' as dart_ui;
 
 final supabase = Supabase.instance.client;
 final dataFormatter = DataFormatter();
+
+class _PinTailPainter extends CustomPainter {
+  final Color color;
+
+  const _PinTailPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = dart_ui.Path()
+      ..moveTo(0, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width / 2, size.height)
+      ..close();
+
+    canvas.drawPath(
+      path,
+      Paint()..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PinTailPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
 
 class _ShimmerPlaceholder extends StatelessWidget {
   const _ShimmerPlaceholder();
@@ -248,32 +274,58 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
               if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
                 MarkerLayer(
                   markers: [
+                    // Soft "approximate area" halo — sits at the true point too, but
+                    // wider and centered, so it never has an alignment offset.
                     Marker(
                       point: location,
-                      width: 42,
-                      height: 46,
-                      alignment: Alignment.topCenter,
+                      width: 64,
+                      height: 64,
+                      alignment: Alignment.center,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
-                              blurRadius: 14,
-                              offset: const Offset(0, 6),
+                          shape: BoxShape.circle,
+                          color: EnduvoColors.deepBlue.withOpacity(0.12),
+                        ),
+                      ),
+                    ),
+                    // The pin itself. bottomCenter means the tip below the circle —
+                    // not the circle's center — lands exactly on the coordinate.
+                    Marker(
+                      point: location,
+                      width: 34,
+                      height: 44,
+                      alignment: Alignment.bottomCenter,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: EnduvoColors.deepBlue,
+                              border: Border.all(color: EnduvoColors.gold, width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Icon(
-                            widget.post.activity == "Bike"
-                                ? Icons.directions_bike
-                                : Icons.directions_run,
-                            color: Colors.black,
-                            size: 18,
+                            child: Icon(
+                              widget.post.activity == "Bike"
+                                  ? Icons.directions_bike
+                                  : Icons.directions_run,
+                              color: Colors.white,
+                              size: 15,
+                            ),
                           ),
-                        ),
+                          CustomPaint(
+                            size: const Size(10, 7),
+                            painter: _PinTailPainter(color: EnduvoColors.deepBlue),
+                          ),
+                        ],
                       ),
                     ),
                   ],

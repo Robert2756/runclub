@@ -15,6 +15,20 @@ final FocusNode titleFocus = FocusNode();
 final FocusNode locationFocus = FocusNode();
 final FocusNode meetingPointFocus = FocusNode();
 
+class EnduvoColors {
+  static const navy = Color(0xFF0A2647);
+  static const deepBlue = Color(0xFF12406B);
+  static const teal = Color(0xFF2E9DC0);
+  static const gold = Color(0xFFF6C567);
+
+  static const white = Color(0xFFFFFFFF);
+  static const background = Color(0xFFF6F8FB);
+  static const surface = Color(0xFFFFFFFF);
+  static const border = Color(0xFFE5E7EB);
+  static const muted = Color(0xFF6B7280);
+  static const text = Color(0xFF111827);
+}
+
 class _BasicSection extends StatelessWidget {
   final TextEditingController titleController;
   final TextEditingController descriptionController;
@@ -48,6 +62,51 @@ class _BasicSection extends StatelessWidget {
     required this.isBlockedByLimit,
   });
 
+  InputDecoration _fieldDecoration({
+    required String hintText,
+    bool isError = false,
+    int? maxLength,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      counterText: maxLength != null ? null : "",
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 15,
+      ),
+      filled: true,
+      fillColor: EnduvoColors.surface,
+      hintStyle: const TextStyle(
+        color: EnduvoColors.muted,
+        fontSize: 14,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: isError
+              ? Colors.redAccent
+              : EnduvoColors.border,
+          width: isError ? 1.4 : 1,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: isError
+              ? Colors.redAccent
+              : EnduvoColors.deepBlue,
+          width: 1.4,
+        ),
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: EnduvoColors.border,
+        ),
+      ),
+    );
+  }
+
   Widget _activityField(BuildContext context) {
     return InkWell(
       onTap: () async {
@@ -55,33 +114,50 @@ class _BasicSection extends StatelessWidget {
         titleFocus.unfocus();
         locationFocus.unfocus();
         meetingPointFocus.unfocus();
+
         await _showActivityDialog(context);
       },
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+        padding: const EdgeInsets.symmetric(
+          vertical: 15,
+          horizontal: 16,
+        ),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade300),
+          color: EnduvoColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: EnduvoColors.border,
+          ),
         ),
         child: Row(
           children: [
-            Icon(_getActivityIcon(activity), size: 20),
-            const SizedBox(width: 10),
+            Icon(
+              _getActivityIcon(activity),
+              size: 20,
+              color: EnduvoColors.text,
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
-                activity.isEmpty ? "Aktivität wählen" : activity,
+                activity.isEmpty
+                    ? "Aktivität wählen"
+                    : activity,
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: activity.isEmpty
-                      ? Colors.grey
-                      : Colors.black,
+                      ? EnduvoColors.muted
+                      : EnduvoColors.text,
                 ),
               ),
             ),
-            const Icon(Icons.keyboard_arrow_down),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 21,
+              color: EnduvoColors.muted,
+            ),
           ],
         ),
       ),
@@ -100,31 +176,37 @@ class _BasicSection extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            padding: const EdgeInsets.symmetric(vertical: 10),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-
-                /// 🔹 Title
                 const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  padding: EdgeInsets.fromLTRB(20, 10, 20, 12),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
                       "Aktivität wählen",
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w700,
+                        color: EnduvoColors.text,
                       ),
                     ),
                   ),
                 ),
-
-                /// 🔹 List
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 320),
+                  constraints: const BoxConstraints(
+                    maxHeight: 320,
+                  ),
                   child: ListView.builder(
                     shrinkWrap: true,
                     itemCount: activities.length,
@@ -140,37 +222,37 @@ class _BasicSection extends StatelessWidget {
                           focusColor: Colors.transparent,
                         ),
                         child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 4,
+                          contentPadding:
+                              const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 3,
                           ),
-
                           leading: Icon(
                             _getActivityIcon(item),
-                            color: Colors.black,
+                            color: EnduvoColors.text,
                           ),
-
                           title: Text(
                             item,
                             style: const TextStyle(
                               fontWeight: FontWeight.w500,
-                              color: Colors.black,
+                              color: EnduvoColors.text,
                             ),
                           ),
-
                           trailing: isSelected
-                              ? const Icon(Icons.check, size: 18, color: Colors.black)
+                              ? const Icon(
+                                  Icons.check,
+                                  size: 18,
+                                  color: EnduvoColors.deepBlue,
+                                )
                               : null,
-
-                          selected: false, // 👈 important: disable built-in selection UI
+                          selected: false,
                           tileColor: Colors.transparent,
-
                           onTap: () {
                             if (item != activity) {
-                              // reset pace/speed when changing activity
                               onPaceChanged(null);
                               onSpeedChanged(null);
                             }
+
                             onActivityChanged(item);
                             Navigator.pop(context);
                           },
@@ -202,30 +284,22 @@ class _BasicSection extends StatelessWidget {
     }
   }
 
-  BoxDecoration fieldDecoration({required bool isError}) {
-    return BoxDecoration(
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(
-        color: isError ? Colors.redAccent : Colors.grey.shade300,
-        width: isError ? 1.5 : 1,
-      ),
-      color: isError ? Colors.red.withOpacity(0.04) : Colors.white,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         if (isBlockedByLimit)
           Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            margin: const EdgeInsets.only(bottom: 18),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF8E8),
-              borderRadius: BorderRadius.circular(14),
+              color: const Color(0xFFFFF9EC),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: const Color(0xFFFFD66B),
+                color: const Color(0xFFF2D48A),
               ),
             ),
             child: Row(
@@ -239,10 +313,11 @@ class _BasicSection extends StatelessWidget {
                 Expanded(
                   child: Text(
                     "Du hast bereits 2 aktive Aktivitäten. Erstelle eine neue, sobald eine beendet ist.",
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w500,
                       color: Color(0xFF6D4C00),
+                      height: 1.35,
                     ),
                   ),
                 ),
@@ -250,120 +325,64 @@ class _BasicSection extends StatelessWidget {
             ),
           ),
 
-        /// 📝 TITLE
+        // TITLE
         TextField(
           controller: titleController,
           focusNode: titleFocus,
           maxLength: 80,
-          decoration: InputDecoration(
-            hintText: "z.B. Easy 5k Feierabendrunde",
-            contentPadding: const EdgeInsets.all(12),
-
-            filled: true,
-            fillColor: Colors.white,
-
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(
-                color: missingField == "title"
-                    ? Colors.redAccent
-                    : Colors.grey.shade300,
-                width: missingField == "title" ? 1.5 : 1,
-              ),
-            ),
-
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(
-                color: missingField == "title"
-                    ? Colors.redAccent
-                    : Colors.black,
-                width: 1.5,
-              ),
-            ),
-
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
+          decoration: _fieldDecoration(
+            hintText: "Titel deiner Aktivität",
+            isError: missingField == "title",
+            maxLength: 80,
           ),
         ),
 
         const SizedBox(height: 10),
 
-        /// 📝 DESCRIPTION
+        // DESCRIPTION
         TextField(
           controller: descriptionController,
           focusNode: descriptionFocus,
           maxLines: 3,
           maxLength: 500,
-          decoration: InputDecoration(
+          decoration: _fieldDecoration(
             hintText: "Beschreibung...",
-            contentPadding: const EdgeInsets.all(12),
-
-            filled: true,
-            fillColor: Colors.white,
-
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(
-                color: Colors.grey.shade300,
-                width: 1,
-              ),
-            ),
-
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(
-                color: Colors.black,
-                width: 1.5,
-              ),
-            ),
-
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
+            maxLength: 500,
           ),
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
 
-        /// 🔥 CORE BLOCK (BIG + IMPORTANT)
-        Column(
+        // ACTIVITY
+        _activityField(context),
+
+        const SizedBox(height: 12),
+
+        // DATE + TIME
+        Row(
           children: [
-
-            /// Activity selector
-            _activityField(context),
-
-            const SizedBox(height: 14),
-
-            /// 📅 DATE + TIME
-            Row(
-              children: [
-                Expanded(
-                  child: _bigSelector(
-                    context: context,
-                    icon: Icons.calendar_today,
-                    label: date == null
-                        ? "Datum wählen"
-                        : "${date!.day.toString().padLeft(2, '0')}.${date!.month.toString().padLeft(2, '0')}.${date!.year}",
-                    onTap: onPickDate,
-                    isError: missingField == "date",
-                    
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _bigSelector(
-                    context: context,
-                    icon: Icons.access_time,
-                    label: time == null
-                        ? "Zeit wählen"
-                        : time!.format(context),
-                    onTap: onPickTime,
-                    isError: missingField == "time",
-                  ),
-                ),
-              ],
+            Expanded(
+              child: _bigSelector(
+                context: context,
+                icon: Icons.calendar_today_outlined,
+                label: date == null
+                    ? "Datum wählen"
+                    : "${date!.day.toString().padLeft(2, '0')}.${date!.month.toString().padLeft(2, '0')}.${date!.year}",
+                onTap: onPickDate,
+                isError: missingField == "date",
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _bigSelector(
+                context: context,
+                icon: Icons.access_time_outlined,
+                label: time == null
+                    ? "Zeit wählen"
+                    : time!.format(context),
+                onTap: onPickTime,
+                isError: missingField == "time",
+              ),
             ),
           ],
         ),
@@ -371,33 +390,6 @@ class _BasicSection extends StatelessWidget {
     );
   }
 
-  /// 🔘 Activity Button
-  Widget _activityButton(String label, bool active) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => onActivityChanged(label),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: active ? Colors.black : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: active ? Colors.white : Colors.black,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 📦 Big Selector (Date / Time)
   Widget _bigSelector({
     required BuildContext context,
     required IconData icon,
@@ -407,23 +399,43 @@ class _BasicSection extends StatelessWidget {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(
+          vertical: 15,
+          horizontal: 14,
+        ),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isError ? Colors.redAccent : Colors.grey.shade300,
-            width: isError ? 1.5 : 1,
-          ),
           color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isError
+                ? Colors.redAccent
+                : EnduvoColors.border,
+            width: isError ? 1.4 : 1,
+          ),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20),
+            Icon(
+              icon,
+              size: 19,
+              color: EnduvoColors.text,
+            ),
             const SizedBox(width: 10),
-            Expanded(child: Text(label)),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w500,
+                  color: label.contains("wählen")
+                      ? EnduvoColors.muted
+                      : EnduvoColors.text,
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -454,43 +466,77 @@ class _DetailsSection extends StatelessWidget {
     required this.onPaceChanged,
     required this.onSpeedChanged,
   });
-  
+
   Widget _selectorTile({
     required String label,
     required String value,
     required VoidCallback onTap,
   }) {
-    final isPlaceholder = value.startsWith("Select");
+    final isPlaceholder = value.isEmpty;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 15,
+            vertical: 15,
+          ),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade200),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: EnduvoColors.border,
+            ),
           ),
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                value.isNotEmpty
-                    ? "$label • $value"
-                    : label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: isPlaceholder ? Colors.grey : Colors.black,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: EnduvoColors.muted,
+                      ),
+                    ),
+                    if (value.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: EnduvoColors.text,
+                        ),
+                      ),
+                    ],
+                    if (isPlaceholder)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 3),
+                        child: Text(
+                          "Nicht angegeben",
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: EnduvoColors.muted,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: Colors.grey.shade400),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: EnduvoColors.muted,
+                size: 21,
+              ),
             ],
           ),
         ),
@@ -500,58 +546,65 @@ class _DetailsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          _selectorTile(
-            label: "Distanz",
-            value: distance == null
-                ? ""
-                : DataFormatter().formatDistance(distance!),
-            onTap: () async {
-              descriptionFocus.unfocus();
-              titleFocus.unfocus();
-              locationFocus.unfocus();
-              meetingPointFocus.unfocus();
-              final result =
-                  await SelectDataCustom().showDistanceDialog(context);
+    return Column(
+      children: [
+        _selectorTile(
+          label: "Distanz",
+          value: distance == null
+              ? ""
+              : DataFormatter().formatDistance(distance!),
+          onTap: () async {
+            descriptionFocus.unfocus();
+            titleFocus.unfocus();
+            locationFocus.unfocus();
+            meetingPointFocus.unfocus();
 
-              if (result != null) onDistanceChanged(result);
-            },
-          ),
+            final result =
+                await SelectDataCustom().showDistanceDialog(context);
 
-          const SizedBox(height: 6),
+            if (result != null) {
+              onDistanceChanged(result);
+            }
+          },
+        ),
 
-          _selectorTile(
-            label: activity == "Laufen" ? "Pace" : "Geschwindigkeit",
-            value: activity == "Laufen" ?    
-              paceSeconds == null
+        const SizedBox(height: 10),
+
+        _selectorTile(
+          label: activity == "Laufen"
+              ? "Pace"
+              : "Geschwindigkeit",
+          value: activity == "Laufen"
+              ? paceSeconds == null
                   ? ""
                   : DataFormatter().formatPace(paceSeconds!)
               : speed == null
                   ? ""
                   : "$speed km/h",
-            onTap: () async {
-              descriptionFocus.unfocus();
-              titleFocus.unfocus();
-              locationFocus.unfocus();
-              meetingPointFocus.unfocus();
-              if (activity == "Laufen") {
-                final result = await SelectDataCustom().showPaceDialog(context);
-                if (result != null) onPaceChanged(result);
-              } else {
-                final result =
-                    await SelectDataCustom().showSpeedDialog(context);
-                if (result != null) onSpeedChanged(result);
+          onTap: () async {
+            descriptionFocus.unfocus();
+            titleFocus.unfocus();
+            locationFocus.unfocus();
+            meetingPointFocus.unfocus();
+
+            if (activity == "Laufen") {
+              final result =
+                  await SelectDataCustom().showPaceDialog(context);
+
+              if (result != null) {
+                onPaceChanged(result);
               }
-            },
-          ),
-        ],
-      ),
+            } else {
+              final result =
+                  await SelectDataCustom().showSpeedDialog(context);
+
+              if (result != null) {
+                onSpeedChanged(result);
+              }
+            }
+          },
+        ),
+      ],
     );
   }
 }
@@ -564,6 +617,7 @@ class _LocationSection extends StatelessWidget {
 
   final TextEditingController townController;
   final TextEditingController meetingPointController;
+
   final VoidCallback onHelpPressed;
   final ValueChanged<String> onTownSubmitted;
   final bool mapReady;
@@ -586,65 +640,79 @@ class _LocationSection extends StatelessWidget {
   });
 
   Widget _buildTownField(BuildContext context) {
-    return Theme(
-      data: Theme.of(context).copyWith(
-        useMaterial3: false,
-      ),
-      child: TextField(
-        controller: townController,
-        textInputAction: TextInputAction.search,
-        onSubmitted: onTownSubmitted,
-        decoration: InputDecoration(
-          hintText: "Ort suchen (z.B. Erfurt)",
+    return TextField(
+      controller: townController,
+      textInputAction: TextInputAction.search,
+      onSubmitted: onTownSubmitted,
+      decoration: InputDecoration(
+        hintText: "Ort suchen (z.B. Erfurt)",
+        hintStyle: const TextStyle(
+          color: EnduvoColors.muted,
+          fontSize: 14,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 15,
+        ),
+        filled: true,
+        fillColor: Colors.white,
 
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 14,
+        prefixIcon: IconButton(
+          icon: const Icon(
+            Icons.help_outline,
+            size: 19,
+            color: EnduvoColors.muted,
           ),
-
-          filled: true,
-          fillColor: Colors.white,
-
-          prefixIcon: IconButton(
-            icon: const Icon(Icons.help_outline, size: 18),
-            onPressed: () {
-              showDialog(
-                barrierColor: Colors.white,
-                context: context,
-                builder: (_) => const AlertDialog(
-                  title: Text("Ort"),
-                  content: Text(
-                    "Hier kannst du grob den Ort deiner Aktivität auf der Karte auswählen. Beim Angeben von konkreten Treffpunkten, versuch möglichst öffentliche Orte zu wählen.",
+          onPressed: () {
+            showDialog(
+              barrierColor: Colors.black.withOpacity(0.15),
+              context: context,
+              builder: (_) => AlertDialog(
+                backgroundColor: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                title: const Text(
+                  "Ort",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              );
-            },
-          ),
+                content: const Text(
+                  "Hier kannst du grob den Ort deiner Aktivität auf der Karte auswählen. Beim Angeben von konkreten Treffpunkten, versuch möglichst öffentliche Orte zu wählen.",
+                ),
+              ),
+            );
+          },
+        ),
 
-          suffixIcon: IconButton(
-            icon: const Icon(Icons.arrow_forward_rounded),
-            onPressed: () => onTownSubmitted(townController.text),
+        suffixIcon: IconButton(
+          icon: const Icon(
+            Icons.arrow_forward_rounded,
+            color: EnduvoColors.text,
           ),
+          onPressed: () =>
+              onTownSubmitted(townController.text),
+        ),
 
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide(
-              color: Colors.grey.shade300,
-              width: 1,
-            ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: EnduvoColors.border,
           ),
+        ),
 
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(
-              color: Colors.black,
-              width: 1.5,
-            ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: EnduvoColors.deepBlue,
+            width: 1.4,
           ),
+        ),
 
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     );
@@ -656,16 +724,19 @@ class _LocationSection extends StatelessWidget {
       child: FlutterMap(
         mapController: mapController,
         options: MapOptions(
-          initialCenter: mapCenter ?? const LatLng(51.509364, -0.128928),
+          initialCenter:
+              mapCenter ?? const LatLng(51.509364, -0.128928),
           initialZoom: 13,
           onMapReady: () {
             onMapReady();
-          } ,
+          },
           onPositionChanged: (position, hasGesture) {
-            // 👇 THIS is your "map finished moving" signal
-            Future.delayed(const Duration(milliseconds: 300), () {
-              onMapReady(); // reuse same callback → sets mapReady = true
-            });
+            Future.delayed(
+              const Duration(milliseconds: 300),
+              () {
+                onMapReady();
+              },
+            );
           },
           interactionOptions: const InteractionOptions(
             flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
@@ -682,19 +753,23 @@ class _LocationSection extends StatelessWidget {
           MarkerLayer(
             markers: [
               Marker(
-                point: mapCenter ?? const LatLng(51.509364, -0.128928),
+                point: mapCenter ??
+                    const LatLng(
+                      51.509364,
+                      -0.128928,
+                    ),
                 width: 44,
                 height: 44,
                 alignment: Alignment.topCenter,
                 child: Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.18),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6),
+                        color: Colors.black.withOpacity(0.14),
+                        blurRadius: 12,
+                        offset: const Offset(0, 5),
                       ),
                     ],
                   ),
@@ -703,7 +778,7 @@ class _LocationSection extends StatelessWidget {
                       activity == "Radfahren"
                           ? Icons.directions_bike
                           : Icons.directions_run,
-                      color: Colors.black,
+                      color: EnduvoColors.text,
                       size: 18,
                     ),
                   ),
@@ -719,82 +794,79 @@ class _LocationSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildTownField(context),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildTownField(context),
 
-          const SizedBox(height: 16),
+        const SizedBox(height: 14),
 
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Stack(
-              children: [
-                _buildMap(),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Stack(
+            children: [
+              _buildMap(),
 
-                if (!mapReady)
-                  Positioned.fill(
-                    child: Container(
-                      color: Colors.black.withOpacity(0.04),
-                      child: const Center(
-                        child: const CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+              if (!mapReady)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black.withOpacity(0.04),
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(
+                          EnduvoColors.text,
                         ),
                       ),
                     ),
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
+        ),
 
-          const SizedBox(height: 22),
-          // _buildMeetingPointField(context),
+        const SizedBox(height: 18),
 
-          TextField(
-            controller: meetingPointController,
-            focusNode: meetingPointFocus,
-            maxLength: 80,
-            decoration: InputDecoration(
-              hintText: "Konkreter Treffpunkt, z.B. Eingang Park, ...",
-              contentPadding: const EdgeInsets.all(12),
+        TextField(
+          controller: meetingPointController,
+          focusNode: meetingPointFocus,
+          maxLength: 80,
+          decoration: InputDecoration(
+            hintText:
+                "Konkreter Treffpunkt, z.B. Eingang Park, ...",
+            hintStyle: const TextStyle(
+              color: EnduvoColors.muted,
+              fontSize: 14,
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 15,
+            ),
+            filled: true,
+            fillColor: Colors.white,
 
-              filled: true,
-              fillColor: Colors.white,
-
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: Colors.grey.shade300,
-                  width: 1,
-                ),
-              ),
-
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(
-                  color: Colors.black,
-                  width: 1.5,
-                ),
-              ),
-
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: EnduvoColors.border,
               ),
             ),
+
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: EnduvoColors.deepBlue,
+                width: 1.4,
+              ),
+            ),
+
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
-
-          // const SizedBox(width: 10),
-
-          // Text(
-          //   "Treffpunkte an öffentlichen Orten wählen, wenn du mit neuen Personen unterwegs bist.",
-          //   style: TextStyle(
-          //     fontSize: 12,
-          //     color: Colors.grey.shade600,
-          //     height: 1.3,
-          //   ),
-          // ),
-        ],
-      );
+        ),
+      ],
+    );
   }
 }
 
@@ -816,76 +888,89 @@ class _MediaSection extends StatelessWidget {
         height: 180,
         width: double.infinity,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+          color: const Color(0xFFFAFBFC),
+          borderRadius: BorderRadius.circular(14),
           border: image == null
-              ? Border.all(color: Colors.grey.shade300)
+              ? Border.all(
+                  color: EnduvoColors.border,
+                )
               : null,
-          color: Colors.grey.shade50,
         ),
         child: image == null
             ? Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add_a_photo_outlined, color: Colors.grey.shade600),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Fotos hinzufügen",
-                      style: TextStyle(color: Colors.grey.shade600),
+                    Icon(
+                      Icons.add_a_photo_outlined,
+                      color: EnduvoColors.muted,
+                      size: 25,
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 9),
+                    const Text(
+                      "Fotos hinzufügen",
+                      style: TextStyle(
+                        color: EnduvoColors.text,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
                     Text(
                       "Beiträge mit Bildern erhalten mehr Aufmerksamkeit",
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade500,
+                        color: EnduvoColors.muted,
                       ),
                     ),
                   ],
-                )
+                ),
               )
             : Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 child: Row(
                   children: [
-                    /// 🖼 IMAGE PREVIEW (left)
                     AspectRatio(
                       aspectRatio: 1,
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(11),
                         child: Image.file(
                           image!,
                           fit: BoxFit.cover,
                         ),
                       ),
                     ),
-
-                    const SizedBox(width: 12),
-
-                    /// ➕ ACTION HINT (right)
+                    const SizedBox(width: 13),
                     Expanded(
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment:
+                            MainAxisAlignment.center,
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
                         children: [
-                          Text(
+                          const Text(
                             "Foto ändern",
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
+                              color: EnduvoColors.text,
                             ),
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 3),
                           Text(
-                            "Tippen zum ersetzen",
+                            "Tippen zum Ersetzen",
                             style: TextStyle(
                               fontSize: 13,
-                              color: Colors.grey.shade600,
+                              color: EnduvoColors.muted,
                             ),
                           ),
                         ],
                       ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: EnduvoColors.muted,
                     ),
                   ],
                 ),
@@ -932,8 +1017,6 @@ class _SettingsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-
-        /// 🤝 JOIN MODE
         _sectionTitle("Beitritt"),
 
         const SizedBox(height: 8),
@@ -948,7 +1031,7 @@ class _SettingsSection extends StatelessWidget {
           onChanged: onJoinModeChanged,
         ),
 
-        const SizedBox(height: 6),
+        const SizedBox(height: 7),
 
         _description(
           joinMode == JoinMode.instant
@@ -957,42 +1040,38 @@ class _SettingsSection extends StatelessWidget {
                   ? "Beitritt nur auf Anfrage möglich"
                   : "Nur eingeladene Leute können beitreten",
         ),
-
-        const SizedBox(height: 16),
       ],
     );
   }
 
-  /// 🔹 Section title
   Widget _sectionTitle(String text) {
-    return Align(
+    return const Align(
       alignment: Alignment.centerLeft,
       child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 13,
+        "Beitritt",
+        style: TextStyle(
+          fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: Colors.grey,
+          color: EnduvoColors.muted,
         ),
       ),
     );
   }
 
-  /// 🔹 Description text
   Widget _description(String text) {
     return Align(
       alignment: Alignment.centerLeft,
       child: Text(
         text,
-        style: TextStyle(
+        style: const TextStyle(
           fontSize: 12,
-          color: Colors.grey.shade600,
+          color: EnduvoColors.muted,
+          height: 1.3,
         ),
       ),
     );
   }
 
-  /// 🔹 Segmented selector (reusable)
   Widget _segmentedSelector<T>({
     required T value,
     required Map<T, String> options,
@@ -1001,8 +1080,8 @@ class _SettingsSection extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(14),
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: options.entries.map((entry) {
@@ -1012,18 +1091,22 @@ class _SettingsSection extends StatelessWidget {
             child: GestureDetector(
               onTap: () => onChanged(entry.key),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 0),
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                duration: const Duration(milliseconds: 160),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
-                  color: selected ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
+                  color: selected
+                      ? Colors.white
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
                   boxShadow: selected
                       ? [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.04),
-                            blurRadius: 6,
+                            blurRadius: 5,
                             offset: const Offset(0, 2),
-                          )
+                          ),
                         ]
                       : null,
                 ),
@@ -1034,8 +1117,8 @@ class _SettingsSection extends StatelessWidget {
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: selected
-                          ? Colors.black
-                          : Colors.grey.shade600,
+                          ? EnduvoColors.text
+                          : EnduvoColors.muted,
                     ),
                   ),
                 ),
@@ -1061,7 +1144,8 @@ class ExpandableCard extends StatefulWidget {
   });
 
   @override
-  State<ExpandableCard> createState() => _ExpandableCardState();
+  State<ExpandableCard> createState() =>
+      _ExpandableCardState();
 }
 
 class _ExpandableCardState extends State<ExpandableCard> {
@@ -1070,46 +1154,69 @@ class _ExpandableCardState extends State<ExpandableCard> {
   @override
   Widget build(BuildContext context) {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      duration: const Duration(milliseconds: 220),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: widget.isError ? Colors.redAccent : Colors.grey.shade300,
-          width: widget.isError ? 1.6 : 1,
+          color: widget.isError
+              ? Colors.redAccent
+              : EnduvoColors.border,
+          width: widget.isError ? 1.4 : 1,
         ),
       ),
       child: Column(
         children: [
           InkWell(
             onTap: () => setState(() => open = !open),
-            child: Row(
-              children: [
-                Text(
-                  widget.title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 15,
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    widget.title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: EnduvoColors.text,
+                    ),
                   ),
-                ),
-                const Spacer(),
-                Icon(open
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down),
-              ],
+                  const Spacer(),
+                  AnimatedRotation(
+                    turns: open ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 21,
+                      color: EnduvoColors.muted,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
 
-          if (open) ...[
-            const SizedBox(height: 12),
-            widget.child,
-          ]
+          if (open)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                16,
+                0,
+                16,
+                16,
+              ),
+              child: widget.child,
+            ),
         ],
       ),
     );
   }
 }
+
 class _TopToast extends StatefulWidget {
   final String message;
   final VoidCallback onDismiss;
@@ -1652,105 +1759,160 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: EnduvoColors.background,
+
       appBar: AppBar(
-        title: const Text("Aktivität planen"),
+        backgroundColor: EnduvoColors.background,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            size: 19,
+            color: EnduvoColors.text,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+
+        title: const Text(
+          "Aktivität planen",
+          style: TextStyle(
+            color: EnduvoColors.text,
+            fontSize: 19,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+
+        centerTitle: true,
       ),
+
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          24,
+        ),
         children: [
 
-          /// 🔥 BASIC (always visible)
-          _BasicSection(
-            isBlockedByLimit: isBlockedByLimit,
-            titleController: titleController,
-            descriptionController: descriptionController,
-            dateController: dateController,
-            timeController: timeController,
-            activity: activity,
-            onPaceChanged: (val) {
-              setState(() => paceSeconds = val);
-              _validate();
-            },
+          // BASIC
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: EnduvoColors.border,
+              ),
+            ),
+            child: _BasicSection(
+              isBlockedByLimit: isBlockedByLimit,
+              titleController: titleController,
+              descriptionController: descriptionController,
+              dateController: dateController,
+              timeController: timeController,
+              activity: activity,
 
-            onSpeedChanged: (val) {
-              setState(() => speed = val);
-              _validate();
-            },
-            onActivityChanged: (val) {
-              setState(() => activity = val);
-            },
-            onPickDate: () async {
-              descriptionFocus.unfocus();
-              titleFocus.unfocus();
-              locationFocus.unfocus();
-              meetingPointFocus.unfocus();
-              final result = await showDatePicker(
-                context: context,
-                firstDate: DateTime.now(),
-                lastDate: DateTime(2100),
-                builder: (context, child) {
-                  return Theme(
-                    data: Theme.of(context).copyWith(
-                      colorScheme: const ColorScheme.light(
-                        primary: Colors.black,
-                        onPrimary: Colors.white,
-                        surface: Colors.white,
-                        onSurface: Colors.black,
+              onPaceChanged: (val) {
+                setState(() => paceSeconds = val);
+                _validate();
+              },
+
+              onSpeedChanged: (val) {
+                setState(() => speed = val);
+                _validate();
+              },
+
+              onActivityChanged: (val) {
+                setState(() => activity = val);
+              },
+
+              onPickDate: () async {
+                descriptionFocus.unfocus();
+                titleFocus.unfocus();
+                locationFocus.unfocus();
+                meetingPointFocus.unfocus();
+
+                final result = await showDatePicker(
+                  context: context,
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime(2100),
+                  builder: (context, child) {
+                    return Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: const ColorScheme.light(
+                          primary: EnduvoColors.text,
+                          onPrimary: Colors.white,
+                          surface: Colors.white,
+                          onSurface: EnduvoColors.text,
+                        ),
+                        dialogTheme:
+                            const DialogThemeData(
+                          surfaceTintColor:
+                              Colors.transparent,
+                        ),
                       ),
-                      dialogTheme: const DialogThemeData(
-                        surfaceTintColor: Colors.transparent,
-                      ),
-                    ),
-                    child: child!,
-                  );
+                      child: child!,
+                    );
+                  },
+                );
+
+                if (result != null) {
+                  setState(() => date = result);
+                  _validate();
                 }
-              );
-              if (result != null) {
-                setState(() => date = result);
-                _validate();
-              }
-            },
-            onPickTime: () async {
-              descriptionFocus.unfocus();
-              titleFocus.unfocus();
-              locationFocus.unfocus();
-              meetingPointFocus.unfocus();
-              final result = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay.now(),
-                builder: (context, child) {
-                  return Theme(
-                    data: Theme.of(context).copyWith(
-                      colorScheme: const ColorScheme.light(
-                        primary: Colors.black, // active elements
-                        onPrimary: Colors.white,
-                        surface: Colors.white,
-                        onSurface: Colors.black,
+              },
+
+              onPickTime: () async {
+                descriptionFocus.unfocus();
+                titleFocus.unfocus();
+                locationFocus.unfocus();
+                meetingPointFocus.unfocus();
+
+                final result = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay.now(),
+                  builder: (context, child) {
+                    return Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: const ColorScheme.light(
+                          primary: EnduvoColors.text,
+                          onPrimary: Colors.white,
+                          surface: Colors.white,
+                          onSurface: EnduvoColors.text,
+                        ),
+                        dialogTheme:
+                            const DialogThemeData(
+                          surfaceTintColor:
+                              Colors.transparent,
+                        ),
                       ),
-                      dialogBackgroundColor: Colors.white,
-                    ),
-                    child: child!,
-                  );
-                },
-              );
-              if (result != null) {
-                setState(() => time = result);
-                _validate();
-              }
-            },
-            date: date,
-            time: time,
-            missingField: missingField,
+                      child: child!,
+                    );
+                  },
+                );
+
+                if (result != null) {
+                  setState(() => time = result);
+                  _validate();
+                }
+              },
+
+              date: date,
+              time: time,
+              missingField: missingField,
+            ),
           ),
 
           const SizedBox(height: 12),
 
-          /// 🔽 DETAILS
+          // DETAILS
           ExpandableCard(
             title: "Details",
             child: _DetailsSection(
               activity: activity,
-
               distance: distance,
               paceSeconds: paceSeconds,
               speed: speed,
@@ -1770,13 +1932,11 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
                 _validate();
               },
 
-              onPickDistance: () {
-                // optional dialog trigger if you use one
-              },
+              onPickDistance: () {},
             ),
           ),
 
-          /// 📍 LOCATION
+          // LOCATION
           ExpandableCard(
             title: "Standort",
             isError: missingField == "location",
@@ -1794,17 +1954,26 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
               },
 
               townController: townController,
-              meetingPointController: meetingPointController,
+              meetingPointController:
+                  meetingPointController,
 
               onTownSubmitted: (value) async {
                 if (value.isEmpty) return;
 
                 setState(() {
-                  mapReady = false; // reset map readyness
+                  mapReady = false;
                 });
 
-                final coords = await mapService.getCoordinatesFromTown(value);
-                final town = await mapService.getTownFromCoordinates(coords!.latitude, coords.longitude);
+                final coords =
+                    await mapService.getCoordinatesFromTown(
+                  value,
+                );
+
+                final town =
+                    await mapService.getTownFromCoordinates(
+                  coords!.latitude,
+                  coords.longitude,
+                );
 
                 setState(() {
                   mapCenter = coords;
@@ -1823,146 +1992,237 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
               onHelpPressed: () {
                 showDialog(
                   context: context,
-                  builder: (_) => const AlertDialog(
-                    title: Text("Standort Hilfe"),
-                    content: Text(
+                  builder: (_) => AlertDialog(
+                    backgroundColor: Colors.white,
+                    surfaceTintColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(18),
+                    ),
+                    title: const Text(
+                      "Standort Hilfe",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    content: const Text(
                       "Tippe einen Ort ein oder setze den Pin direkt auf der Karte.",
                     ),
                   ),
                 );
               },
-            )
+            ),
           ),
 
-          /// 🖼 MEDIA
+          // MEDIA
           ExpandableCard(
             title: "Medien",
             child: _MediaSection(
               image: postImage,
               onPickImage: () {
-                // trigger image picker
                 _pickImage();
               },
             ),
           ),
 
-          /// ⚙️ SETTINGS
+          // SETTINGS
           ExpandableCard(
             title: "Sichtbarkeit",
             child: _SettingsSection(
               joinMode: joinMode,
               onJoinModeChanged: (val) {
-                // handle join mode change
                 setState(() => joinMode = val);
               },
             ),
           ),
         ],
       ),
+
       bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: ElevatedButton(
-            onPressed: isBlockedByLimit || isLoading ? null : () async {
-              // future business rule (premium limit)
-              if (isBlockedByLimit) {
-                // _showLimitDialog();
-                return;
-              }
+        child: Container(
+          color: EnduvoColors.background,
+          padding: const EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            16,
+          ),
+          child: SizedBox(
+            height: 50,
+            child: ElevatedButton(
+              onPressed:
+                  isBlockedByLimit || isLoading
+                      ? null
+                      : () async {
 
-              // Basic validation
-              final validationError = _getValidationError();
-              if (validationError != null) {
-                setState(() {
-                  missingField = validationError;
-                });
-                _showMissingFields(validationError);
-                return;
-              }
+                          // =====================================================
+                          // EVERYTHING BELOW HERE IS YOUR EXISTING LOGIC
+                          // =====================================================
 
-              // Time validation (at least 1 hour in future)
-              if (!_isAtLeastOneHourInFuture()) {
-                setState(() {
-                  missingField = "time"; // 👈 highlight time field
-                });
+                          if (isBlockedByLimit) {
+                            return;
+                          }
 
-                _showMissingFields("timeTooSoon"); // custom key
-                return;
-              }
+                          final validationError =
+                              _getValidationError();
 
-              // Warning about missing fields
-              if (postImage == null) {
-                final proceed = await _confirmWithout();
-                if (!proceed) return;
-              }
+                          if (validationError != null) {
+                            setState(() {
+                              missingField =
+                                  validationError;
+                            });
 
-              setState(() {
-                missingField = null;
-              });
+                            _showMissingFields(
+                              validationError,
+                            );
 
-              setState(() => isLoading = true);
-              Post? returnPost = await addPostToDatabase();
-              // add creator automatically to activity participants!!
-              setState(() => isLoading = false);
+                            return;
+                          }
 
-              if (!mounted) return;
-              if (returnPost != null) {
-                Navigator.pop(context, returnPost);
-              }
-              else {
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    backgroundColor: Colors.white,
-                    surfaceTintColor: Colors.transparent,
-                    elevation: 0,
-                    title: const Text(
-                      "Fehler",
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    content: const Text(
-                      "Post konnte nicht erstellt werden",
-                      style: TextStyle(
-                        color: Colors.black,
-                        fontSize: 15,
-                      ),
-                    ),
-                    actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    actions: [
-                      TextButton(
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.black,
-                        ),
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        child: const Text(
-                          "OK",
-                          style: TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isBlockedByLimit
-                  ? const Color.fromARGB(255, 175, 175, 175)
-                  : const Color.fromARGB(255, 0, 0, 0),
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                          if (!_isAtLeastOneHourInFuture()) {
+                            setState(() {
+                              missingField = "time";
+                            });
+
+                            _showMissingFields(
+                              "timeTooSoon",
+                            );
+
+                            return;
+                          }
+
+                          if (postImage == null) {
+                            final proceed =
+                                await _confirmWithout();
+
+                            if (!proceed) return;
+                          }
+
+                          setState(() {
+                            missingField = null;
+                          });
+
+                          setState(() {
+                            isLoading = true;
+                          });
+
+                          Post? returnPost =
+                              await addPostToDatabase();
+
+                          setState(() {
+                            isLoading = false;
+                          });
+
+                          if (!mounted) return;
+
+                          if (returnPost != null) {
+                            Navigator.pop(
+                              context,
+                              returnPost,
+                            );
+                          } else {
+                            showDialog(
+                              context: context,
+                              builder: (ctx) =>
+                                  AlertDialog(
+                                backgroundColor:
+                                    Colors.white,
+                                surfaceTintColor:
+                                    Colors.transparent,
+                                elevation: 0,
+                                shape:
+                                    RoundedRectangleBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(
+                                    18,
+                                  ),
+                                ),
+                                title: const Text(
+                                  "Fehler",
+                                  style: TextStyle(
+                                    color:
+                                        EnduvoColors.text,
+                                    fontSize: 18,
+                                    fontWeight:
+                                        FontWeight.bold,
+                                  ),
+                                ),
+                                content: const Text(
+                                  "Post konnte nicht erstellt werden",
+                                  style: TextStyle(
+                                    color:
+                                        EnduvoColors.text,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                actionsPadding:
+                                    const EdgeInsets
+                                        .fromLTRB(
+                                  16,
+                                  0,
+                                  16,
+                                  12,
+                                ),
+                                actions: [
+                                  TextButton(
+                                    style:
+                                        TextButton.styleFrom(
+                                      foregroundColor:
+                                          EnduvoColors.text,
+                                    ),
+                                    onPressed: () =>
+                                        Navigator.of(ctx)
+                                            .pop(),
+                                    child: const Text(
+                                      "OK",
+                                      style: TextStyle(
+                                        fontWeight:
+                                            FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                        },
+
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    isBlockedByLimit
+                        ? const Color(0xFFB5B5B5)
+                        : EnduvoColors.text,
+                disabledBackgroundColor:
+                    EnduvoColors.text.withOpacity(0.35),
+                foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.white,
+                elevation: 0,
+                shadowColor: Colors.transparent,
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
+
+              child: isLoading
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child:
+                          CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      "Aktivität planen",
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
             ),
-            child: isLoading
-                ? const CircularProgressIndicator(color: Colors.white)
-                : const Text(
-                    "Aktivität planen",
-                    style: TextStyle(fontSize: 16),
-                  ),
           ),
         ),
       ),

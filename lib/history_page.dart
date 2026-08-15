@@ -13,6 +13,20 @@ import 'package:shimmer/shimmer.dart';
 final supabase = Supabase.instance.client;
 final imageService = ImageService();
 
+class EnduvoColors {
+  static const navy = Color(0xFF0A2647);
+  static const deepBlue = Color(0xFF12406B);
+  static const teal = Color(0xFF2E9DC0);
+  static const gold = Color(0xFFF6C567);
+
+  static const white = Color(0xFFFFFFFF);
+  static const background = Color(0xFFF6F8FB);
+  static const surface = Color(0xFFFFFFFF);
+  static const border = Color(0xFFE5E7EB);
+  static const muted = Color(0xFF6B7280);
+  static const text = Color(0xFF111827);
+}
+
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key, required this.title});
   final String title;
@@ -254,9 +268,11 @@ class _HistoryPageState extends State<HistoryPage> {
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             height: 2,
-            width: active ? 18 : 0,
+            width: active ? 24 : 0,
             decoration: BoxDecoration(
-              color: Colors.black,
+              color: active
+                ? EnduvoColors.text
+                : EnduvoColors.muted,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -283,8 +299,10 @@ class _HistoryPageState extends State<HistoryPage> {
               child: Text(
                 "$year",
                 style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: EnduvoColors.muted,
+                  letterSpacing: 0.4,
                 ),
               ),
             ),
@@ -302,13 +320,17 @@ class _HistoryPageState extends State<HistoryPage> {
                       DateFormat.MMMM('de_DE')
                           .format(DateTime(0, month)),
                       style: const TextStyle(
-                        fontWeight: FontWeight.w500,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: EnduvoColors.text,
                       ),
                     ),
                     trailing: Icon(
                       isExpanded
-                          ? Icons.expand_less
-                          : Icons.expand_more,
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 21,
+                      color: EnduvoColors.muted,
                     ),
                     onTap: () async {
                       setState(() {
@@ -461,7 +483,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   Text(
                     post.title,
                     style: const TextStyle(
-                      fontSize: 20,
+                      fontSize: 21,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
@@ -622,9 +644,10 @@ class _HistoryPageState extends State<HistoryPage> {
     }
 
     return Scaffold(
+      backgroundColor: EnduvoColors.background,
       body: RefreshIndicator(
         color: Colors.black,
-        backgroundColor: Colors.white,
+        backgroundColor: EnduvoColors.background,
         onRefresh: _refresh,
         child:
           ListView(
