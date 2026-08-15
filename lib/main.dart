@@ -16,6 +16,8 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey();
 
 // authentification changed -> propagate to listeners
 class SupabaseAuthListenable extends ChangeNotifier {
+  bool ready = false;
+
   SupabaseAuthListenable() {
     supabase.auth.onAuthStateChange.listen((data) {
       debugPrint(
@@ -29,7 +31,7 @@ class SupabaseAuthListenable extends ChangeNotifier {
         router.go('/reset-password');
         return;
       }
-      // SIGNED_IN / INITIAL_SESSION / SIGNED_OUT / TOKEN_REFRESHED etc.
+      ready = true; // we know the real auth state now
       // notify GoRouter so its redirect() runs again.
       notifyListeners();
     }, onError: (error, stackTrace) {
@@ -40,12 +42,17 @@ class SupabaseAuthListenable extends ChangeNotifier {
 }
 final authListenable = SupabaseAuthListenable();
 
+
+
 // routing
 final GoRouter router = GoRouter(
   navigatorKey: navigatorKey,
   initialLocation: '/',
   refreshListenable: authListenable,
   redirect: (context, state) {
+    if (authListenable.ready == false) {
+      return null; // don't decide anything until we know the real auth state
+    }
     final user = supabase.auth.currentUser;
 
     final location = state.matchedLocation;
