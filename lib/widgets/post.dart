@@ -21,28 +21,107 @@ import 'dart:ui' as dart_ui;
 final supabase = Supabase.instance.client;
 final dataFormatter = DataFormatter();
 
-class _PinTailPainter extends CustomPainter {
-  final Color color;
+class _MapPinPainter extends CustomPainter {
+  final double bodyDiameter;
+  final double tailHeight;
 
-  const _PinTailPainter({required this.color});
+  const _MapPinPainter({this.bodyDiameter = 40, this.tailHeight = 6});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = dart_ui.Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width / 2, size.height)
+    final r = bodyDiameter / 2;
+    final cx = size.width / 2;
+    final cy = r;
+    final tipY = size.height; // pin tip == exact bottom pixel, by construction
+
+    // Small tail: narrow, and starts exactly at the circle's bottom
+    // edge (cy + r) rather than inside it — no overlap, no seam.
+    final tailHalfWidth = r * 0.34;
+    final tailStartY = cy + r * 0.85;
+
+    final ovalPath = dart_ui.Path()
+      ..addOval(Rect.fromCircle(center: Offset(cx, cy), radius: r));
+
+    final tailPath = dart_ui.Path()
+      ..moveTo(cx - tailHalfWidth, tailStartY)
+      ..lineTo(cx, tipY)
+      ..lineTo(cx + tailHalfWidth, tailStartY)
       ..close();
 
-    canvas.drawPath(
-      path,
-      Paint()..color = color,
+    // True geometric union — avoids nonzero-fill winding cancellation
+    // between the two subpaths (which was the source of the gap).
+    final pinPath = dart_ui.Path.combine(
+      dart_ui.PathOperation.union,
+      ovalPath,
+      tailPath,
     );
+
+    // Manual shadow: the exact same silhouette, blurred, offset only
+    // vertically. No simulated light source, so it can never drift
+    // sideways relative to the shape above it — unlike drawShadow().
+    canvas.save();
+    canvas.translate(0, 2.5);
+    canvas.drawPath(
+      pinPath,
+      Paint()
+        ..color = Colors.black.withOpacity(0.22)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
+    canvas.restore();
+
+    // Body fill
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          const Color.fromARGB(255, 0, 0, 0),
+          const Color.fromARGB(255, 0, 0, 0),
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, bodyDiameter));
+    canvas.drawPath(pinPath, fillPaint);
   }
 
   @override
-  bool shouldRepaint(_PinTailPainter oldDelegate) {
-    return oldDelegate.color != color;
+  bool shouldRepaint(covariant _MapPinPainter oldDelegate) =>
+      oldDelegate.bodyDiameter != bodyDiameter ||
+      oldDelegate.tailHeight != tailHeight;
+}
+
+class _MapPinMarker extends StatelessWidget {
+  static const double bodyDiameter = 40;
+  static const double tailHeight = 3;
+  static const double iconSize = 18;
+
+  const _MapPinMarker();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: bodyDiameter,
+      height: bodyDiameter + tailHeight,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          CustomPaint(
+            size: const Size(bodyDiameter, bodyDiameter + tailHeight),
+            painter: const _MapPinPainter(
+              bodyDiameter: bodyDiameter,
+              tailHeight: tailHeight,
+            ),
+          ),
+          Positioned(
+            top: (bodyDiameter - iconSize) / 2,
+            left: (bodyDiameter - iconSize) / 2,
+            child: const Icon(
+              Icons.directions_bike,
+              size: iconSize,
+              color: Color.fromARGB(255, 255, 255, 255),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -105,7 +184,14 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   bool _mapReady = false;
   Timer? _mapRevealTimer;
 
-  final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+  String get _mapUrl {
+    final dpr = WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+    final retina = dpr >= 2 ? '@2x' : '';
+    return 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}$retina.png?key=yH0AJynJV0qzbwHfR3q0';
+        // return 'https://api.maptiler.com/maps/voyager/256/{z}/{x}/{y}$retina.png?key=yH0AJynJV0qzbwHfR3q0';
+  }
+
+  // final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
 
   @override
   void didChangeDependencies() {
@@ -241,7 +327,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     return "Vor $d Tag${d > 1 ? "en" : ""}";
   }
 
-  Widget _buildMap({double initialZoom = 12, bool showMarker = true}) {
+  Widget _buildMap({double initialZoom = 13, bool showMarker = true}) {
     final location = (widget.post.latitude != null && widget.post.longitude != null)
         ? LatLng(widget.post.latitude!, widget.post.longitude!)
         : LatLng(0.0, 0.0);
@@ -260,73 +346,21 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
               ),
             ),
             children: [
-              TileLayer(
-                urlTemplate: mapUrl,
-                userAgentPackageName: 'com.robert.app',
-                // Cross-fades each tile in instead of hard-cutting it
-                // into place — smooths out any tiles that are still
-                // arriving after the shimmer window below has closed
-                // (slow connections, deeper zoom, etc.).
-                tileDisplay: const TileDisplay.fadeIn(
-                  duration: Duration(milliseconds: 250),
-                ),
-              ),
+            TileLayer(
+              urlTemplate: _mapUrl,
+              userAgentPackageName: 'com.robert.app',
+              // maxNativeZoom: 20, // let MapTiler serve its sharpest available tile
+              tileDisplay: const TileDisplay.fadeIn(duration: Duration(milliseconds: 250)),
+            ),
               if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
                 MarkerLayer(
                   markers: [
-                    // Soft "approximate area" halo — sits at the true point too, but
-                    // wider and centered, so it never has an alignment offset.
                     Marker(
                       point: location,
-                      width: 64,
-                      height: 64,
-                      alignment: Alignment.center,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: EnduvoColors.deepBlue.withOpacity(0.12),
-                        ),
-                      ),
-                    ),
-                    // The pin itself. bottomCenter means the tip below the circle —
-                    // not the circle's center — lands exactly on the coordinate.
-                    Marker(
-                      point: location,
-                      width: 34,
-                      height: 44,
-                      alignment: Alignment.bottomCenter,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: EnduvoColors.deepBlue,
-                              border: Border.all(color: EnduvoColors.gold, width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              widget.post.activity == "Bike"
-                                  ? Icons.directions_bike
-                                  : Icons.directions_run,
-                              color: Colors.white,
-                              size: 15,
-                            ),
-                          ),
-                          CustomPaint(
-                            size: const Size(10, 7),
-                            painter: _PinTailPainter(color: EnduvoColors.deepBlue),
-                          ),
-                        ],
-                      ),
+                      width: _MapPinMarker.bodyDiameter,
+                      height: _MapPinMarker.bodyDiameter + _MapPinMarker.tailHeight,
+                      alignment: Alignment.topCenter,
+                      child: const _MapPinMarker(),
                     ),
                   ],
                 )
@@ -671,7 +705,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                                   widget.onToggle(!widget.showImageMain);
                                 },
                                 child: Container(
-                                  padding: const EdgeInsets.all(3),
+                                  padding: const EdgeInsets.all(2),
                                   decoration: BoxDecoration(
                                     color: Colors.white.withOpacity(0.9),
                                     borderRadius: BorderRadius.circular(18),
