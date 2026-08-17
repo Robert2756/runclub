@@ -20,6 +20,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/rendering.dart';
 import 'activity_share_page.dart';
 import 'package:device_calendar/device_calendar.dart';
+import 'widgets/map_marker.dart';
 final supabase = Supabase.instance.client;
 
 enum ActivityMode {
@@ -1061,31 +1062,10 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
             markers: [
               Marker(
                 point: location,
-                width: 44,
-                height: 44,
+                width: MapPinMarker.bodyDiameter,
+                height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
                 alignment: Alignment.topCenter,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.18),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Icon(
-                      post!.activity == "Bike"
-                          ? Icons.directions_bike
-                          : Icons.directions_run,
-                      color: Colors.black,
-                      size: 18,
-                    ),
-                  ),
-                ),
+                child: const MapPinMarker(),
               ),
             ],
           )
@@ -1130,12 +1110,27 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   }
 
   Future<void> openInMaps(double lat, double lng) async {
-    final url = Uri.parse(
-      "https://www.google.com/maps/search/?api=1&query=$lat,$lng",
-    );
+    final Uri url;
 
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+    if (Platform.isIOS) {
+      url = Uri.parse(
+        'https://maps.apple.com/?ll=$lat,$lng',
+      );
+    } else {
+      url = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=$lat,$lng',
+      );
+    }
+
+    try {
+      if (!await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      )) {
+        debugPrint('Could not open maps: $url');
+      }
+    } catch (e) {
+      debugPrint('Error opening maps: $e');
     }
   }
 
@@ -1221,7 +1216,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                   child: Stack(
                     children: [
                       _buildMap(
-                        initialZoom: locked ? 11 : 14,
+                        initialZoom: locked ? 13 : 14,
                         showMarker: true,
                       ),
 

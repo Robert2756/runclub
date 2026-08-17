@@ -1,39 +1,55 @@
-import 'package:flutter/material.dart';
-import 'models/post.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'dart:ui' as ui;
-import 'dart:io';
-import 'dart:typed_data';
-import 'package:path_provider/path_provider.dart';
-import 'package:flutter/rendering.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:gal/gal.dart';
-import 'services/data_formatter.dart';
-import 'package:google_fonts/google_fonts.dart';
+// ─────────────────────────────────────────────────────────────────────────
+// pubspec.yaml changes needed:
+//
+//   dependencies:
+//     file_saver: ^0.2.14     # NEW — cross-platform save (Android/iOS/Web/
+//                              # macOS/Windows/Linux). Replaces `gal`, which
+//                              # only works on iOS/Android.
+//     share_plus: ^10.0.0     # keep, just make sure it's a recent version —
+//                              # cross-platform sharing (mobile share sheet,
+//                              # Web Share API, desktop fallback).
+//
+//   You can remove `gal` and (if unused elsewhere) `path_provider`.
+//
+//   NOTE on file_saver: the enum casing (`MimeType.png` vs `MimeType.PNG`)
+//   and the `saveFile` signature changed between 0.1.x and 0.2.x. If you're
+//   pinned to an older version, adjust `_saveBytes()` below accordingly.
+// ─────────────────────────────────────────────────────────────────────────
+
 import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+import 'package:gal/gal.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'widgets/map_marker.dart';
 
-enum ShareStyle {
-  image,
-  map,
-  transparent,
-}
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:share_plus/share_plus.dart';
 
+import 'models/post.dart';
+import 'services/data_formatter.dart';
+import 'signin_page.dart' show EnduvoColors;
+
+enum ShareStyle { image, map, transparent }
+
+/// Checkerboard used only as an in-app hint that the "transparent" style
+/// exports without a background — never rendered into the actual export.
 class CheckerPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     const square = 20.0;
-
-    final light = Paint()..color = const Color(0xFFE6E6E6);
-    final dark  = Paint()..color = const Color(0xFFD2D2D2);
+    final light = Paint()..color = const Color(0xFFE9EBEF);
+    final dark = Paint()..color = const Color(0xFFDDE0E5);
 
     for (double y = 0; y < size.height; y += square) {
       for (double x = 0; x < size.width; x += square) {
         final isDark = ((x / square + y / square) % 2 == 0);
-        canvas.drawRect(
-          Rect.fromLTWH(x, y, square, square),
-          isDark ? light : dark,
-        );
+        canvas.drawRect(Rect.fromLTWH(x, y, square, square), isDark ? light : dark);
       }
     }
   }
@@ -45,11 +61,7 @@ class CheckerPainter extends CustomPainter {
 class ActivityConfig {
   final String statLabel;
   final String Function(Post post) statValue;
-
-  const ActivityConfig({
-    required this.statLabel,
-    required this.statValue,
-  });
+  const ActivityConfig({required this.statLabel, required this.statValue});
 }
 
 class ActivitySharePage extends StatefulWidget {
@@ -70,55 +82,29 @@ class ActivitySharePage extends StatefulWidget {
 
 class _ActivitySharePageState extends State<ActivitySharePage> {
   final GlobalKey _captureKey = GlobalKey();
-  final dataFormatter = DataFormatter();
-  final PageController _pageController = PageController();
   final GlobalKey _exportKey = GlobalKey();
+  final dataFormatter = DataFormatter();
   OverlayEntry? _exportEntry;
-  final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
 
-  // Future<Uint8List?> _capture() async {
-  //   try {
-  //     final boundary = await _showExportOverlay();
+  ShareStyle _style = ShareStyle.image;
+  bool _showStats = true;
 
-  //     if (boundary.debugNeedsPaint) {
-  //       await Future.delayed(const Duration(milliseconds: 100));
-  //     }
+  bool _busy = false;
+  String? _busyAction; // 'save' | 'share'
 
-  //     final image = await boundary.toImage(
-  //       pixelRatio: 3.0,
-  //     );
+  final mapUrl =
+      'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
 
-  //     final byteData = await image.toByteData(
-  //       format: ui.ImageByteFormat.png,
-  //     );
-
-  //     _exportEntry?.remove();
-  //     _exportEntry = null;
-
-  //     return byteData?.buffer.asUint8List();
-  //   } catch (e) {
-  //     debugPrint("Capture failed: $e");
-
-  //     _exportEntry?.remove();
-  //     _exportEntry = null;
-
-  //     return null;
-  //   }
-  // }
+  // ── Capture ──────────────────────────────────────────────────────────
 
   Future<Uint8List?> _capture() async {
-    final page = _pageController.hasClients
-        ? (_pageController.page ?? 0).round()
-        : 0;
-
-    if (page == 4 || page == 5) {
-      return _captureTransparent(stats: page == 5);
+    if (_style == ShareStyle.transparent) {
+      return _captureTransparent(stats: _showStats);
     }
 
-    // For all other pages: capture exactly what's on screen
     try {
-      final boundary = _captureKey.currentContext!
-          .findRenderObject() as RenderRepaintBoundary;
+      final boundary =
+          _captureKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
 
       while (boundary.debugNeedsPaint) {
         await Future.delayed(const Duration(milliseconds: 20));
@@ -128,7 +114,7 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       return byteData?.buffer.asUint8List();
     } catch (e) {
-      debugPrint("Capture failed: $e");
+      debugPrint('Capture failed: $e');
       return null;
     }
   }
@@ -139,9 +125,9 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
 
       _exportEntry = OverlayEntry(
         builder: (_) => Positioned(
-          // Just far enough off-screen to be invisible,
-          // but within a range the GPU still rasterizes fully.
-          // -10000 is the problem; -1500 stays within raster bounds on most devices.
+          // Far enough off-screen to be invisible, but within a range the
+          // GPU still fully rasterizes. -10000 breaks on some devices;
+          // -1500 stays within raster bounds.
           left: -1500,
           top: 0,
           child: Material(
@@ -169,8 +155,8 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
       await WidgetsBinding.instance.endOfFrame;
       await WidgetsBinding.instance.endOfFrame;
 
-      final boundary = _exportKey.currentContext!
-          .findRenderObject() as RenderRepaintBoundary;
+      final boundary =
+          _exportKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
 
       while (boundary.debugNeedsPaint) {
         await Future.delayed(const Duration(milliseconds: 16));
@@ -184,38 +170,258 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
 
       return byteData?.buffer.asUint8List();
     } catch (e) {
-      debugPrint("Transparent capture failed: $e");
+      debugPrint('Transparent capture failed: $e');
       _exportEntry?.remove();
       _exportEntry = null;
       return null;
     }
   }
 
-  Future<void> _save() async {
+  // ── Save / Share (platform-independent) ────────────────────────────
+
+  Future<void> _handleSave() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _busyAction = 'save';
+    });
+
     try {
       final bytes = await _capture();
-      if (bytes == null) return;
-
-      await Gal.putImageBytes(bytes);
-
+      if (bytes == null) throw Exception('capture returned null');
+      await _saveBytes(bytes);
       if (!mounted) return;
+      _showSnack('Gespeichert');
+    } catch (e) {
+      debugPrint('Save failed: $e');
+      if (!mounted) return;
+      _showSnack('Speichern fehlgeschlagen', error: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _busyAction = null;
+        });
+      }
+    }
+  }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Gespeichert in der Galerie"),
-          duration: Duration(seconds: 2),
-        ),
+  Future<void> _saveBytes(Uint8List bytes) async {
+    final tempDir = await getTemporaryDirectory();
+    final file = File(
+      '${tempDir.path}/enduvo_activity_${DateTime.now().millisecondsSinceEpoch}.png',
+    );
+
+    await file.writeAsBytes(bytes, flush: true);
+
+    await Gal.putImage(file.path);
+  }
+
+  Future<void> _handleShare() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _busyAction = 'share';
+    });
+
+    try {
+      final bytes = await _capture();
+      if (bytes == null) throw Exception('capture returned null');
+
+      final file = XFile.fromData(
+        bytes,
+        name: 'enduvo_activity.png',
+        mimeType: 'image/png',
+      );
+
+      await Share.shareXFiles(
+        [file],
+        text: 'Mit Enduvo unterwegs — ${widget.post.title}',
       );
     } catch (e) {
+      debugPrint('Share failed: $e');
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Fehler beim Speichern"),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnack('Teilen fehlgeschlagen', error: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _busyAction = null;
+        });
+      }
     }
+  }
+
+  void _showSnack(String message, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: error ? Colors.redAccent : EnduvoColors.text,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // ── Card content ─────────────────────────────────────────────────────
+
+  Widget _statChip({
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+      // decoration: BoxDecoration(
+      //   color: Colors.white.withOpacity(0.10),
+      //   borderRadius: BorderRadius.circular(11),
+      //   border: Border.all(
+      //     color: Colors.white.withOpacity(0.16),
+      //   ),
+      // ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.60),
+              fontSize: 8,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.0,
+            ),
+          ),
+          const SizedBox(width: 2),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _enduvoSignature() {
+    return Opacity(
+      opacity: 0.82,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: EdgeInsets.all(6),
+            child:           Text(
+            'ENDUVO',
+            style: GoogleFonts.inter(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+              color: Colors.white,
+            ),
+          ),),
+          Image.asset(
+            'assets/EnduvoInAppLogo1152x1152-2.png',
+            width: 20,
+            height: 20,
+            fit: BoxFit.contain,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _uiLayer({bool stats = false}) {
+    final post = widget.post;
+
+    final activityConfigs = {
+      'Run': ActivityConfig(
+        statLabel: 'Pace',
+        statValue: (post) => post.pace != null ? dataFormatter.formatPace(post.pace!) : '-',
+      ),
+      'Bike': ActivityConfig(
+        statLabel: 'Speed',
+        statValue: (post) => post.speed != null ? '${post.speed} km/h' : '-',
+      ),
+    };
+    final config = activityConfigs[post.activity];
+
+    final date = dataFormatter.formatActivityDate(DateTime.parse(post.startsAt!));
+    final time = dataFormatter.formatTime(DateTime.parse(post.startsAt!));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, 26),
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                post.title,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  height: 1.15,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${post.town ?? "Unbekannter Ort"} · $date · $time',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.85),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                height: 1.1,
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (stats &&
+                (post.distance != null ||
+                    post.pace != null ||
+                    post.speed != null)) ...[
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (post.distance != null)
+                    _statChip(
+                      label: 'Distanz',
+                      value: post.distance! >= 1000
+                          ? '${(post.distance! / 1000).toStringAsFixed(1)} km'
+                          : '${post.distance!.round()} m',
+                    ),
+
+                  if (post.distance != null &&
+                      (post.pace != null || post.speed != null))
+                    // const SizedBox(height: 6),
+
+                  if (post.pace != null || post.speed != null)
+                    _statChip(
+                      label: config?.statLabel ?? 'Pace',
+                      value: config?.statValue(post) ?? '-',
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+            ],
+            const Spacer(),
+            Align(
+              alignment: Alignment.center,
+              child: _enduvoSignature(),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _desaturatedBackground() {
@@ -231,32 +437,23 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
           ]),
           child: ImageFiltered(
             imageFilter: ui.ImageFilter.blur(sigmaX: 2, sigmaY: 2),
-            child: Image.network(
-              widget.post.imgurl!,
-              fit: BoxFit.cover,
-            ),
+            child: Image.network(widget.post.imgurl!, fit: BoxFit.cover),
           ),
         ),
-
-        // stronger readability layer
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.black.withOpacity(0.75),
-                Colors.black.withOpacity(0.2),
-                Colors.black.withOpacity(0.2),
+                Colors.black.withOpacity(0.72),
+                Colors.black.withOpacity(0.18),
+                Colors.black.withOpacity(0.32),
               ],
             ),
           ),
         ),
-
-        // subtle RUNCLUB tint wash
-        Container(
-          color: const Color(0xFFB6A0FF).withOpacity(0.06),
-        ),
+        Container(color: EnduvoColors.deepBlue.withOpacity(0.08)),
       ],
     );
   }
@@ -266,524 +463,364 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
       fit: StackFit.expand,
       children: [
         CustomPaint(painter: CheckerPainter()),
-
-        Container(
-          color: Colors.black.withOpacity(0.14),
-        ),
+        Container(color: Colors.black.withOpacity(0.10)),
       ],
     );
   }
 
-  Widget _uiLayer({
-    bool stats = false
-  }) {
-    final post = widget.post;
-
-    final activityConfigs = {
-      "Run": ActivityConfig(
-        statLabel: "Pace",
-        statValue: (post) => post.pace != null
-            ? dataFormatter.formatPace(post.pace!)
-            : "-",
-      ),
-      "Bike": ActivityConfig(
-        statLabel: "Speed",
-        statValue: (post) => post.speed != null
-            ? "${post.speed} km/h"
-            : "-",
-      ),
-    };
-    final config = activityConfigs[post.activity];
-
-    final date = dataFormatter.formatActivityDate(
-      DateTime.parse(post.startsAt!),
-    );
-
-    final time = dataFormatter.formatTime(
-      DateTime.parse(post.startsAt!),
-    );
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: Column(
-          children: [
-
-            Text(
-              post.title,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-
-            const SizedBox(height: 2),
-
-            Text(
-              "${post.town ?? "Unknown location"} · $date · $time",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                height: 1.1,
-              ),
-            ),
-
-            // const SizedBox(height: 6),
-
-            // Text(
-            //   post.town ?? "Unknown location",
-            //   textAlign: TextAlign.center,
-            //   style: TextStyle(
-            //     color: Colors.white.withOpacity(0.7),
-            //     fontSize: 14,
-            //     fontWeight: FontWeight.w600,
-            //   ),
-            // ),
-
-            if (stats)
-              Column(
-                children: [
-                  const SizedBox(height: 14),
-                  Column(
-                    children: [
-                      if (post.distance != null) ...[
-                        Text(
-                          "DISTANZ",
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.55),
-                            fontSize: 8,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                        Text(
-                          post.distance! >= 1000
-                              ? "${(post.distance! / 1000).toStringAsFixed(1)} km"
-                              : "${post.distance!.round()} m",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                      if (post.distance != null && post.pace != null)
-                        const SizedBox(height: 10),
-                      if (post.pace != null) ...[
-                        Text(
-                          config?.statLabel.toUpperCase() ?? "PACE",
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.55),
-                            fontSize: 8,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          config?.statValue(post) ?? "-",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 4)
-                    ],
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 12),
-
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "${widget.profileName} | ",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      height: 1.1,
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  Text(
-                    "RUNCLUB",
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.bebasNeue(
-                      fontSize: 11,
-                      letterSpacing: 1.5,
-                      color: Colors.white.withOpacity(0.8),
-                    ),
-                  ),
-                ],
-              )
-          ],
-        )
-      ),
-    );
-  }
-
-  Widget _imageCard({
-    bool transparentVisual = false,
-    bool transparentExport = false,
-    bool stats = false,
-  }) {
-
+  Widget _imageCard({bool transparentVisual = false, bool transparentExport = false, bool stats = false}) {
     return ClipRRect(
       child: Stack(
         fit: StackFit.expand,
         children: [
-          /// BACKGROUND ONLY IF NOT TRANSPARENT
           if (transparentVisual)
             _checkerboardBackground()
           else if (transparentExport)
-            SizedBox.expand()
+            const SizedBox.expand()
           else if (widget.post.imgurl != null)
             _desaturatedBackground()
           else
-            Container(color: Colors.black),
-
-          /// UI ALWAYS ON TOP
+            Container(color: EnduvoColors.navy),
           _uiLayer(stats: stats),
         ],
       ),
     );
   }
 
-  Widget _mapCard({
-    stats = false
-  }) {
+  Widget _enduvoWatermark() {
+    return Opacity(
+      opacity: 0.72,
+      child: Image.asset(
+        'assets/EnduvoInAppLogo1152x1152-2.png',
+        width: 34,
+        height: 34,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+
+  Widget _mapCard({bool stats = false}) {
     final lat = widget.post.latitude ?? 0;
     final lng = widget.post.longitude ?? 0;
 
-    final location = (widget.post.latitude != null && widget.post.longitude != null)
-      ? LatLng(widget.post.latitude!, widget.post.longitude!)
-      : LatLng(0.0, 0.0);
+    final location =
+        (widget.post.latitude != null && widget.post.longitude != null)
+            ? LatLng(widget.post.latitude!, widget.post.longitude!)
+            : const LatLng(0.0, 0.0);
 
     return ClipRRect(
       child: Stack(
         fit: StackFit.expand,
         children: [
-          FlutterMap(
-            options: MapOptions(
-              initialCenter: LatLng(lat, lng),
-              initialZoom: 15,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.none,
+          // ── Map background ───────────────────────────────────────
+          ColorFiltered(
+            colorFilter: const ColorFilter.matrix([
+              0.92, 0.04, 0.04, 0, 0,
+              0.04, 0.92, 0.04, 0, 0,
+              0.04, 0.04, 0.92, 0, 0,
+              0,    0,    0,    1, 0,
+            ]),
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(
+                sigmaX: 2,
+                sigmaY: 2,
+              ),
+              child: FlutterMap(
+                options: MapOptions(
+                  initialCenter: LatLng(lat, lng),
+                  initialZoom: 15,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none,
+                  ),
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: mapUrl,
+                  ),
+                ],
               ),
             ),
-            children: [
-              TileLayer(urlTemplate: mapUrl),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: location,
-                      width: 44,
-                      height: 44,
-                      alignment: Alignment.topCenter,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
-                              blurRadius: 14,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Icon(
-                            widget.post.activity == "Bike"
-                                ? Icons.directions_bike
-                                : Icons.directions_run,
-                            color: Colors.black,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-            ],
           ),
+
+          // ── Same visual treatment as image card ──────────────────
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.black.withOpacity(0.65),
-                  Colors.black.withOpacity(0.2),
-                  Colors.black.withOpacity(0.2),
+                  Colors.black.withOpacity(0.72),
+                  Colors.black.withOpacity(0.18),
+                  Colors.black.withOpacity(0.32),
                 ],
               ),
             ),
           ),
+
+          Container(
+            color: EnduvoColors.deepBlue.withOpacity(0.08),
+          ),
+
+          // ── Text / stats / branding ──────────────────────────────
           _uiLayer(stats: stats),
         ],
       ),
     );
   }
 
+  Widget _buildPreviewCard() {
+    switch (_style) {
+      case ShareStyle.image:
+        return _imageCard(stats: _showStats);
+      case ShareStyle.map:
+        return _mapCard(stats: _showStats);
+      case ShareStyle.transparent:
+        return _imageCard(transparentVisual: true, stats: _showStats);
+    }
+  }
+
+  // ── Chrome ───────────────────────────────────────────────────────────
+
   Widget _buildBackButton() {
     return GestureDetector(
       onTap: () => Navigator.pop(context, true),
       child: Container(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.35),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.15),
-          ),
-        ),
-        child: const Icon(
-          Icons.arrow_back_ios_new,
-          size: 18,
           color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: EnduvoColors.border),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
         ),
+        child: const Icon(Icons.arrow_back_ios_new, size: 18, color: EnduvoColors.text),
       ),
     );
   }
 
-  Widget _buildCard(int index) {
-    switch (index) {
-      case 0:
-        return _imageCard();
-      case 1:
-        return _imageCard(stats: true);
-      case 2:
-        return _mapCard();
-      case 3:
-        return _mapCard(stats: true);
-      case 4:
-        return _imageCard(transparentVisual: true);
-      case 5:
-        return _imageCard(
-          transparentVisual: true,
-          stats: true
-        );
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  Widget _buildExportView() {
-    final page = _pageController.hasClients
-        ? (_pageController.page ?? 0).round()
-        : 0;
-
-    // Transparent styles: wrap tightly to content, not 1080x1080
-    if (page == 4 || page == 5) {
-      return _buildTransparentExportView(stats: page == 5);
-    }
-
-    return Material(
-      color: Colors.transparent,
-      child: Center(
-        child: RepaintBoundary(
-          key: _exportKey,
-          child: SizedBox(
-            width: 1080,
-            height: 1080,
-            child: _buildExportCard(page),
-          ),
-        ),
+  Widget _styleSegments() {
+    return SegmentedButton<ShareStyle>(
+      segments: const [
+        ButtonSegment(value: ShareStyle.image, icon: Icon(Icons.photo_camera_outlined, size: 18)),
+        ButtonSegment(value: ShareStyle.map, icon: Icon(Icons.map_outlined, size: 18)),
+        ButtonSegment(value: ShareStyle.transparent, icon: Icon(Icons.layers_outlined, size: 18)),
+      ],
+      selected: {_style},
+      showSelectedIcon: false,
+      onSelectionChanged: (s) => setState(() => _style = s.first),
+      style: SegmentedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: EnduvoColors.muted,
+        selectedBackgroundColor: EnduvoColors.text,
+        selectedForegroundColor: Colors.white,
+        side: const BorderSide(color: EnduvoColors.border),
+        textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
       ),
     );
   }
 
-  Widget _buildExportCard(int index) {
-    switch (index) {
-      case 0:
-        return _imageCard();
-      case 1:
-        return _imageCard(stats: true);
-      case 2:
-        return _mapCard();
-      case 3:
-        return _mapCard(stats: true);
-      case 4:
-        return _imageCard(transparentExport: true);
-      case 5:
-        return _imageCard(transparentExport: true, stats: true);
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  Future<RenderRepaintBoundary> _showExportOverlay() async {
-    _exportEntry = OverlayEntry(
-      builder: (_) => _buildExportView(),
-    );
-
-    Overlay.of(context).insert(_exportEntry!);
-
-    await WidgetsBinding.instance.endOfFrame;
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    final boundary = _exportKey.currentContext!
-        .findRenderObject() as RenderRepaintBoundary;
-
-    while (boundary.debugNeedsPaint) {
-      await Future.delayed(const Duration(milliseconds: 20));
-    }
-
-    return boundary;
-  }
-
-  Widget _buildTransparentExportView({bool stats = false}) {
-    return Material(
-      color: Colors.transparent,
-      child: Center(
-        child: RepaintBoundary(
-          key: _exportKey,
-          child: IntrinsicHeight(
-            child: IntrinsicWidth(
-              child: _uiLayer(stats: stats),
+  Widget _statsToggle() {
+    return GestureDetector(
+      onTap: () => setState(() => _showStats = !_showStats),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: EnduvoColors.border),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.query_stats_rounded, size: 17, color: _showStats ? EnduvoColors.deepBlue : EnduvoColors.muted),
+            const SizedBox(width: 6),
+            Text(
+              'Statistiken',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: _showStats ? EnduvoColors.text : EnduvoColors.muted,
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            Switch(
+              value: _showStats,
+              onChanged: (v) => setState(() => _showStats = v),
+              activeColor: EnduvoColors.deepBlue,
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _actionButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback onPressed,
+    required bool primary,
+    required bool loading,
+  }) {
+    final child = loading
+        ? const SizedBox(
+            height: 18,
+            width: 18,
+            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          )
+        : Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 19),
+              const SizedBox(width: 8),
+              Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            ],
+          );
+
+    if (primary) {
+      return ElevatedButton(
+        onPressed: loading ? null : onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: EnduvoColors.text,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: EnduvoColors.text.withOpacity(0.65),
+          disabledForegroundColor: Colors.white,
+          elevation: 0,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        child: child,
+      );
+    }
+
+    return OutlinedButton(
+      onPressed: loading ? null : onPressed,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: EnduvoColors.text,
+        disabledForegroundColor: EnduvoColors.muted,
+        side: const BorderSide(color: EnduvoColors.border, width: 1.4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      child: child,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final page = _pageController.hasClients
-        ? (_pageController.page ?? 0).round()
-        : 0;
-
-    final topInset = MediaQuery.of(context).padding.top;
-
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          /// =========================
-          /// TOP AREA (Back Button)
-          /// =========================
-          SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: EdgeInsets.only(
-                    top: 16,
-                    left: 16,
-                    right: 16,
-                    bottom: 16,
-                  ),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: _buildBackButton(),
-                  ),
-                ),
-
-                /// =========================
-                /// MAIN CONTENT (PageView)
-                /// =========================
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+      backgroundColor: EnduvoColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+              child: Row(
+                children: [
+                  _buildBackButton(),
+                  Expanded(
                     child: Column(
                       children: [
-                        Expanded(
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  if (page == 2)
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade200,
-                                      ),
-                                    ),
-                                  RepaintBoundary(
-                                    key: _captureKey,
-                                    child: PageView(
-                                      controller: _pageController,
-                                      onPageChanged: (_) => setState(() {}),
-                                      children: [
-                                        _buildCard(0),
-                                        _buildCard(1),
-                                        _buildCard(2),
-                                        _buildCard(3),
-                                        _buildCard(4),
-                                        _buildCard(5),
-                                      ],
-                                    ),
-                                  ),
-                                ]
-                              )
-                            ]
-                          )
+                        Image.asset(
+                          'assets/EnduvoInAppLogo1152x1152-2.png',
+                          height: 30,
+                          fit: BoxFit.contain,
                         ),
-
-                        const SizedBox(height: 12),
-
-                        /// =========================
-                        /// PAGE INDICATOR
-                        /// =========================
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(6, (i) {
-                            final active = i == page;
-
-                            return Container(
-                              margin: const EdgeInsets.symmetric(horizontal: 3),
-                              child: Text(
-                                "°",
-                                style: TextStyle(
-                                  color: active
-                                      ? Colors.black.withOpacity(0.65)
-                                      : Colors.black.withOpacity(0.2),
-                                  fontSize: 18,
-                                ),
-                              ),
-                            );
-                          }),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Aktivität teilen',
+                          style: TextStyle(fontSize: 12.5, color: EnduvoColors.muted, fontWeight: FontWeight.w500),
                         ),
-
-                        const SizedBox(height: 12),
                       ],
                     ),
                   ),
-                ),
+                  const SizedBox(width: 44), // balances the back button
+                ],
+              ),
+            ),
 
-                /// =========================
-                /// BOTTOM ACTION
-                /// =========================
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _save,
-                      child: const Text("Als Bild speichern"),
+            // ── Preview card ────────────────────────────────────────
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: Center(
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.10), blurRadius: 30, offset: const Offset(0, 16)),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: RepaintBoundary(
+                          key: _captureKey,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            child: KeyedSubtree(
+                              key: ValueKey('$_style-$_showStats'),
+                              child: _buildPreviewCard(),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ]
+              ),
+            ),
+
+            // ── Style + stats controls ──────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(child: _styleSegments()),
+                  const SizedBox(width: 10),
+                  _statsToggle(),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // ── Actions ──────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: _actionButton(
+                        label: 'Speichern',
+                        icon: Icons.download_rounded,
+                        onPressed: _handleSave,
+                        primary: false,
+                        loading: _busy && _busyAction == 'save',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: _actionButton(
+                        label: 'Teilen',
+                        icon: Icons.ios_share_rounded,
+                        onPressed: _handleShare,
+                        primary: true,
+                        loading: _busy && _busyAction == 'share',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             )
-          )
-        ]
-      )
+          ],
+        ),
+      ),
     );
   }
 }

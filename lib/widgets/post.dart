@@ -16,114 +16,11 @@ import 'post_placeholder.dart';
 import '../services/data_formatter.dart';
 import 'package:shimmer/shimmer.dart';
 import 'user_avatar.dart';
+import 'map_marker.dart';
 import 'dart:ui' as dart_ui;
 
 final supabase = Supabase.instance.client;
 final dataFormatter = DataFormatter();
-
-class _MapPinPainter extends CustomPainter {
-  final double bodyDiameter;
-  final double tailHeight;
-
-  const _MapPinPainter({this.bodyDiameter = 40, this.tailHeight = 6});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final r = bodyDiameter / 2;
-    final cx = size.width / 2;
-    final cy = r;
-    final tipY = size.height; // pin tip == exact bottom pixel, by construction
-
-    // Small tail: narrow, and starts exactly at the circle's bottom
-    // edge (cy + r) rather than inside it — no overlap, no seam.
-    final tailHalfWidth = r * 0.34;
-    final tailStartY = cy + r * 0.85;
-
-    final ovalPath = dart_ui.Path()
-      ..addOval(Rect.fromCircle(center: Offset(cx, cy), radius: r));
-
-    final tailPath = dart_ui.Path()
-      ..moveTo(cx - tailHalfWidth, tailStartY)
-      ..lineTo(cx, tipY)
-      ..lineTo(cx + tailHalfWidth, tailStartY)
-      ..close();
-
-    // True geometric union — avoids nonzero-fill winding cancellation
-    // between the two subpaths (which was the source of the gap).
-    final pinPath = dart_ui.Path.combine(
-      dart_ui.PathOperation.union,
-      ovalPath,
-      tailPath,
-    );
-
-    // Manual shadow: the exact same silhouette, blurred, offset only
-    // vertically. No simulated light source, so it can never drift
-    // sideways relative to the shape above it — unlike drawShadow().
-    canvas.save();
-    canvas.translate(0, 2.5);
-    canvas.drawPath(
-      pinPath,
-      Paint()
-        ..color = Colors.black.withOpacity(0.22)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
-    );
-    canvas.restore();
-
-    // Body fill
-    final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          const Color.fromARGB(255, 0, 0, 0),
-          const Color.fromARGB(255, 0, 0, 0),
-        ],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, bodyDiameter));
-    canvas.drawPath(pinPath, fillPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _MapPinPainter oldDelegate) =>
-      oldDelegate.bodyDiameter != bodyDiameter ||
-      oldDelegate.tailHeight != tailHeight;
-}
-
-class _MapPinMarker extends StatelessWidget {
-  static const double bodyDiameter = 40;
-  static const double tailHeight = 3;
-  static const double iconSize = 18;
-
-  const _MapPinMarker();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: bodyDiameter,
-      height: bodyDiameter + tailHeight,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          CustomPaint(
-            size: const Size(bodyDiameter, bodyDiameter + tailHeight),
-            painter: const _MapPinPainter(
-              bodyDiameter: bodyDiameter,
-              tailHeight: tailHeight,
-            ),
-          ),
-          Positioned(
-            top: (bodyDiameter - iconSize) / 2,
-            left: (bodyDiameter - iconSize) / 2,
-            child: const Icon(
-              Icons.directions_bike,
-              size: iconSize,
-              color: Color.fromARGB(255, 255, 255, 255),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _ShimmerPlaceholder extends StatelessWidget {
   const _ShimmerPlaceholder();
@@ -183,6 +80,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   // need to re-trigger this.
   bool _mapReady = false;
   Timer? _mapRevealTimer;
+  bool _locationNoticeExpanded = false;
 
   String get _mapUrl {
     final dpr = WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
@@ -327,7 +225,75 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     return "Vor $d Tag${d > 1 ? "en" : ""}";
   }
 
-  Widget _buildMap({double initialZoom = 13, bool showMarker = true}) {
+  Widget _buildLocationNotice({bool show = true}) {
+    if (!show) return const SizedBox.shrink();
+
+    return Positioned(
+      top: 14,
+      right: 14,
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _locationNoticeExpanded = !_locationNoticeExpanded;
+          });
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.symmetric(
+            horizontal: _locationNoticeExpanded ? 12 : 0,
+            vertical: _locationNoticeExpanded ? 9 : 0,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.94),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.12),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: _locationNoticeExpanded
+                ? const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.lock_outline_rounded,
+                        size: 16,
+                        color: Colors.black87,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Beitreten um genauen Treffpunkt zu sehen',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  )
+                : const SizedBox(
+                    width: 34,
+                    height: 34,
+                    child: Icon(
+                      Icons.lock_outline_rounded,
+                      size: 17,
+                      color: Colors.black87,
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMap({double initialZoom = 13, bool showMarker = true, bool showLocationMarker = true}) {
     final location = (widget.post.latitude != null && widget.post.longitude != null)
         ? LatLng(widget.post.latitude!, widget.post.longitude!)
         : LatLng(0.0, 0.0);
@@ -357,15 +323,17 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                   markers: [
                     Marker(
                       point: location,
-                      width: _MapPinMarker.bodyDiameter,
-                      height: _MapPinMarker.bodyDiameter + _MapPinMarker.tailHeight,
+                      width: MapPinMarker.bodyDiameter,
+                      height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
                       alignment: Alignment.topCenter,
-                      child: const _MapPinMarker(),
+                      child: const MapPinMarker(),
                     ),
                   ],
                 )
             ],
           ),
+          if (showLocationMarker)
+            _buildLocationNotice(),
 
           // Shimmer covers the map until the reveal window closes,
           // then fades out. IgnorePointer while showing so it doesn't
@@ -716,12 +684,13 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                                       width: 76,
                                       height: 76,
                                       child: widget.showImageMain
-                                          ? IgnorePointer(
-                                              child: _buildMap(
-                                                initialZoom: 10,
-                                                showMarker: false,
-                                              ),
-                                            )
+                                            ? IgnorePointer(
+                                                child: _buildMap(
+                                                  initialZoom: 10,
+                                                  showMarker: false,
+                                                  showLocationMarker: false,
+                                                ),
+                                              )
                                           : Image.network(
                                               widget.post.imgurl!,
                                               fit: BoxFit.cover,

@@ -9,6 +9,7 @@ import 'widgets/map_pointer.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/post.dart';
+import 'widgets/map_marker.dart';
 final supabase = Supabase.instance.client;
 final FocusNode descriptionFocus = FocusNode();
 final FocusNode titleFocus = FocusNode();
@@ -621,7 +622,6 @@ class _LocationSection extends StatelessWidget {
   final VoidCallback onHelpPressed;
   final ValueChanged<String> onTownSubmitted;
   final bool mapReady;
-
   final VoidCallback onMapReady;
   final String activity;
 
@@ -639,110 +639,173 @@ class _LocationSection extends StatelessWidget {
     required this.activity,
   });
 
+  static const LatLng _defaultLocation = LatLng(
+    50.983334,
+    11.033333,
+  );
+
+  InputDecoration _inputDecoration({
+    required String hintText,
+    Widget? prefixIcon,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: const TextStyle(
+        color: EnduvoColors.muted,
+        fontSize: 14,
+      ),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 15,
+        vertical: 15,
+      ),
+      filled: true,
+      fillColor: Colors.white,
+      prefixIcon: prefixIcon,
+      suffixIcon: suffixIcon,
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(13),
+        borderSide: const BorderSide(
+          color: EnduvoColors.border,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(13),
+        borderSide: const BorderSide(
+          color: EnduvoColors.deepBlue,
+          width: 1.3,
+        ),
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(13),
+      ),
+    );
+  }
+
+  void _showLocationHelp(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.18),
+      builder: (_) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(
+            24,
+            24,
+            24,
+            8,
+          ),
+          contentPadding: const EdgeInsets.fromLTRB(
+            24,
+            8,
+            24,
+            24,
+          ),
+          title: const Text(
+            'Ort auswählen',
+            style: TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              color: EnduvoColors.text,
+            ),
+          ),
+          content: const Text(
+            'Suche zuerst nach einem Ort. Anschließend kannst du die Karte bewegen, um den Pin genau dort zu platzieren, wo deine Aktivität stattfinden soll.\n\n'
+            'Bei konkreten Treffpunkten empfehlen wir öffentliche Orte wie Parkeingänge, Plätze oder bekannte Treffpunkte.',
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.5,
+              color: EnduvoColors.muted,
+            ),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(
+            16,
+            0,
+            16,
+            12,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'Verstanden',
+                style: TextStyle(
+                  color: EnduvoColors.deepBlue,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildTownField(BuildContext context) {
     return TextField(
       controller: townController,
       textInputAction: TextInputAction.search,
       onSubmitted: onTownSubmitted,
-      decoration: InputDecoration(
-        hintText: "Ort suchen (z.B. Erfurt)",
-        hintStyle: const TextStyle(
-          color: EnduvoColors.muted,
-          fontSize: 14,
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 15,
-        ),
-        filled: true,
-        fillColor: Colors.white,
-
+      decoration: _inputDecoration(
+        hintText: 'Ort suchen, z. B. Erfurt',
         prefixIcon: IconButton(
+          tooltip: 'Informationen zum Standort',
           icon: const Icon(
-            Icons.help_outline,
+            Icons.info_outline_rounded,
             size: 19,
             color: EnduvoColors.muted,
           ),
-          onPressed: () {
-            showDialog(
-              barrierColor: Colors.black.withOpacity(0.15),
-              context: context,
-              builder: (_) => AlertDialog(
-                backgroundColor: Colors.white,
-                surfaceTintColor: Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                title: const Text(
-                  "Ort",
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                content: const Text(
-                  "Hier kannst du grob den Ort deiner Aktivität auf der Karte auswählen. Beim Angeben von konkreten Treffpunkten, versuch möglichst öffentliche Orte zu wählen.",
-                ),
-              ),
-            );
-          },
+          onPressed: () => _showLocationHelp(context),
         ),
-
         suffixIcon: IconButton(
+          tooltip: 'Ort suchen',
           icon: const Icon(
             Icons.arrow_forward_rounded,
+            size: 20,
             color: EnduvoColors.text,
           ),
-          onPressed: () =>
-              onTownSubmitted(townController.text),
-        ),
+          onPressed: () {
+            final query = townController.text.trim();
 
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: EnduvoColors.border,
-          ),
-        ),
-
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(
-            color: EnduvoColors.deepBlue,
-            width: 1.4,
-          ),
-        ),
-
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+            if (query.isNotEmpty) {
+              onTownSubmitted(query);
+            }
+          },
         ),
       ),
     );
   }
 
   Widget _buildMap() {
+    final initialLocation = mapCenter ?? _defaultLocation;
+
     return AspectRatio(
       aspectRatio: 4 / 3,
       child: FlutterMap(
         mapController: mapController,
         options: MapOptions(
-          initialCenter:
-              mapCenter ?? const LatLng(51.509364, -0.128928),
+          initialCenter: initialLocation,
           initialZoom: 13,
-          onMapReady: () {
-            onMapReady();
-          },
-          onPositionChanged: (position, hasGesture) {
-            Future.delayed(
-              const Duration(milliseconds: 300),
-              () {
-                onMapReady();
-              },
-            );
-          },
           interactionOptions: const InteractionOptions(
             flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
           ),
-          onTap: (tapPosition, point) {
-            onLocationChanged(point);
+
+          onMapReady: onMapReady,
+
+          // The pin stays centered while the user moves the map.
+          // This makes selecting a location much easier on mobile.
+          onPositionChanged: (position, hasGesture) {
+            if (!hasGesture) return;
+
+            final center = position.center;
+
+            if (center != null) {
+              onLocationChanged(center);
+            }
           },
         ),
         children: [
@@ -750,43 +813,82 @@ class _LocationSection extends StatelessWidget {
             urlTemplate: mapUrl,
             userAgentPackageName: 'com.robert.app',
           ),
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: mapCenter ??
-                    const LatLng(
-                      51.509364,
-                      -0.128928,
-                    ),
-                width: 44,
-                height: 44,
-                alignment: Alignment.topCenter,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.14),
-                        blurRadius: 12,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Icon(
-                      activity == "Radfahren"
-                          ? Icons.directions_bike
-                          : Icons.directions_run,
-                      color: EnduvoColors.text,
-                      size: 18,
-                    ),
-                  ),
+
+          // Fixed center pin.
+          IgnorePointer(
+            child: Center(
+              child: Transform.translate(
+                offset: const Offset(
+                  0,
+                  -(MapPinMarker.tailHeight / 2),
                 ),
+                child: const MapPinMarker(),
               ),
-            ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMapInstruction() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        12,
+        0,
+        12,
+        12,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 13,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.96),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: const Row(
+        children: [
+          Icon(
+            Icons.touch_app_rounded,
+            size: 18,
+            color: EnduvoColors.deepBlue,
+          ),
+          SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              'Karte bewegen, um den Pin zu platzieren',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: EnduvoColors.text,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMeetingPointField() {
+    return TextField(
+      controller: meetingPointController,
+      maxLength: 80,
+      textInputAction: TextInputAction.done,
+      decoration: _inputDecoration(
+        hintText: 'Konkreter Treffpunkt, z. B. Parkeingang',
+      ).copyWith(
+        counterStyle: const TextStyle(
+          color: EnduvoColors.muted,
+          fontSize: 11,
+        ),
       ),
     );
   }
@@ -801,21 +903,34 @@ class _LocationSection extends StatelessWidget {
         const SizedBox(height: 14),
 
         ClipRRect(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           child: Stack(
             children: [
               _buildMap(),
 
+              // Small floating instruction.
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildMapInstruction(),
+              ),
+
+              // Loading overlay.
               if (!mapReady)
                 Positioned.fill(
                   child: Container(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.white.withOpacity(0.72),
                     child: const Center(
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(
-                          EnduvoColors.text,
+                      child: SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(
+                            EnduvoColors.text,
+                          ),
                         ),
                       ),
                     ),
@@ -827,44 +942,7 @@ class _LocationSection extends StatelessWidget {
 
         const SizedBox(height: 18),
 
-        TextField(
-          controller: meetingPointController,
-          focusNode: meetingPointFocus,
-          maxLength: 80,
-          decoration: InputDecoration(
-            hintText:
-                "Konkreter Treffpunkt, z.B. Eingang Park, ...",
-            hintStyle: const TextStyle(
-              color: EnduvoColors.muted,
-              fontSize: 14,
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 15,
-            ),
-            filled: true,
-            fillColor: Colors.white,
-
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: EnduvoColors.border,
-              ),
-            ),
-
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: EnduvoColors.deepBlue,
-                width: 1.4,
-              ),
-            ),
-
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
+        _buildMeetingPointField(),
       ],
     );
   }
@@ -908,7 +986,7 @@ class _MediaSection extends StatelessWidget {
                     ),
                     const SizedBox(height: 9),
                     const Text(
-                      "Fotos hinzufügen",
+                      "Bild hinzufügen",
                       style: TextStyle(
                         color: EnduvoColors.text,
                         fontSize: 14,
@@ -1958,29 +2036,55 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
                   meetingPointController,
 
               onTownSubmitted: (value) async {
-                if (value.isEmpty) return;
+                final query = value.trim();
+                if (query.isEmpty) return;
 
                 setState(() {
                   mapReady = false;
                 });
 
-                final coords =
-                    await mapService.getCoordinatesFromTown(
-                  value,
-                );
+                try {
+                  final coords =
+                      await mapService.getCoordinatesFromTown(query);
 
-                final town =
-                    await mapService.getTownFromCoordinates(
-                  coords!.latitude,
-                  coords.longitude,
-                );
+                  if (coords == null) {
+                    if (mounted) {
+                      setState(() {
+                        mapReady = true;
+                      });
+                    }
+                    return;
+                  }
 
-                setState(() {
-                  mapCenter = coords;
-                  postTown = town;
-                });
+                  final town =
+                      await mapService.getTownFromCoordinates(
+                    coords.latitude,
+                    coords.longitude,
+                  );
 
-                mapController.move(coords, 13);
+                  if (!mounted) return;
+
+                  setState(() {
+                    mapCenter = coords;
+                    postTown = town;
+                  });
+
+                  mapController.move(coords, 13);
+
+                  // The map is already initialized, so onMapReady
+                  // will NOT be called again here.
+                  setState(() {
+                    mapReady = true;
+                  });
+                } catch (e) {
+                  debugPrint('Error searching for town: $e');
+
+                  if (!mounted) return;
+
+                  setState(() {
+                    mapReady = true;
+                  });
+                }
               },
 
               onLocationChanged: (point) {

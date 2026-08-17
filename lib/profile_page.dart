@@ -441,6 +441,8 @@ class _ProfileContentState extends State<ProfileContent> {
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(6, 6, 6, 26),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       children: [
         const SizedBox(height: 10),
         // past runs
@@ -1524,68 +1526,49 @@ body: _profileReady
           backgroundColor: Colors.white,
           strokeWidth: 2.0,
           onRefresh: _refreshProfile,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return Column(
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
                 children: [
-                  Flexible(
-                    flex: 0,
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          children: [
-                            ProfileHeader(
-                              isMe: isMe,
-                              avatarUrl: _displayAvatarUrl,
-                              fullName: _fullName,
-                              userName: _userName,
-                              town: _town,
-                              bio: _bio,
-                              onEditAvatar: _editAvatar,
-                              onEditBio: _editProfile,
-                              togetherCount: _togetherCount,
-                              lastTogether: _lastTogether,
-                              onPrimaryAction:
-                                  isMe ? _editProfile : _inviteUser,
-                              age: _age,
-                              isUploadingAvatar: _uploadingAvatar,
-                            ),
-
-                            if (!isMe) ...[
-                              const SizedBox(height: 12),
-                              SocialProofCard(
-                                togetherCount: _togetherCount,
-                                lastTogether: _lastTogether,
-                                username: "User",
-                              ),
-                            ],
-
-                            const SizedBox(height: 16),
-                          ],
-                        ),
-                      ),
-                    ),
+                  ProfileHeader(
+                    isMe: isMe,
+                    avatarUrl: _displayAvatarUrl,
+                    fullName: _fullName,
+                    userName: _userName,
+                    town: _town,
+                    bio: _bio,
+                    onEditAvatar: _editAvatar,
+                    onEditBio: _editProfile,
+                    togetherCount: _togetherCount,
+                    lastTogether: _lastTogether,
+                    onPrimaryAction: isMe ? _editProfile : _inviteUser,
+                    age: _age,
+                    isUploadingAvatar: _uploadingAvatar,
                   ),
-
-                  Expanded(
-                    child: ProfileContent(
-                      isMe: isMe,
-                      profileId: widget.profileId,
+                  if (!isMe) ...[
+                    const SizedBox(height: 12),
+                    SocialProofCard(
                       togetherCount: _togetherCount,
                       lastTogether: _lastTogether,
+                      username: "User",
                     ),
+                  ],
+                  const SizedBox(height: 16),
+                  ProfileContent(
+                    isMe: isMe,
+                    profileId: widget.profileId,
+                    togetherCount: _togetherCount,
+                    lastTogether: _lastTogether,
                   ),
                 ],
-              );
-            },
+              ),
+            ),
           ),
         ),
       )
-    : const Center(
-        child: CircularProgressIndicator(),
-      ),
+    : const Center(child: CircularProgressIndicator()),
     );
   }
 }
