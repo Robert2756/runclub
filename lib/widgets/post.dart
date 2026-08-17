@@ -95,10 +95,12 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    precacheImage(
-      NetworkImage(widget.post.imgurl!),
-      context,
-    );
+    if (widget.post.imgurl != null) {
+      precacheImage(
+        NetworkImage(widget.post.imgurl!),
+        context,
+      );
+    }
   }
 
   @override
