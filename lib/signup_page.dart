@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signin_page.dart';
 import 'checkEmailPage.dart';
+import 'package:go_router/go_router.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -66,10 +67,7 @@ class _SignUpPageState extends State<SignUpPage> {
 
         // Genuine new signup.
         if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => CheckEmailPage(email: email)),
-        );
+        context.go('/check-email?email=${Uri.encodeComponent(emailController.text.trim())}');
       }
     } on AuthException catch (e) {
       // 👇 THIS is the important part
@@ -365,12 +363,7 @@ class _SignUpPageState extends State<SignUpPage> {
                             alignment: Alignment.center,
                             child: TextButton(
                               onPressed: () {
-                                Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const SignInPage(),
-                                  ),
-                                );
+                                context.go('/signin');
                               },
                               style: TextButton.styleFrom(
                                 foregroundColor: EnduvoColors.muted,

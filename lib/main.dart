@@ -84,7 +84,7 @@ final GoRouter router = GoRouter(
     if (user == null) {
       result = (loggingIn || checkingEmail) ? null : '/signin';
     } else if (user.emailConfirmedAt == null) {
-      result = checkingEmail ? null : '/check-email';
+      result = (checkingEmail || loggingIn) ? null : '/check-email';   // ← add loggingIn here
     } else if (loggingIn || checkingEmail) {
       result = '/';
     } else if (resettingPassword) {
@@ -130,54 +130,61 @@ void main() async {
   ),);
   final appLinks = AppLinks();
 
+  // Handle the link that launched the app (cold start) — was missing before.
+  final initialUri = await appLinks.getInitialLink();
+  if (initialUri != null) {
+    debugPrint("Initial deep link: $initialUri");
+    await _handleDeepLink(initialUri);
+  }
+
   // deep link nadler picks up deep link and establishes a new session that is detected by the auth state listener on top
   appLinks.uriLinkStream.listen((uri) async {
     debugPrint("Deep link arrived: $uri");
-
-    if (uri.scheme != 'com.enduvo.app' ||
-        uri.host != 'login-callback') {
-      return;
-    }
-
-    // 1. PKCE flow: ?code=...
-    final code = uri.queryParameters['code'];
-
-    if (code != null) {
-      try {
-        await supabase.auth.exchangeCodeForSession(code);
-        debugPrint("PKCE code exchanged successfully");
-      } catch (e, stackTrace) {
-        debugPrint("PKCE exchange FAILED: $e");
-        debugPrintStack(stackTrace: stackTrace);
-      }
-
-      return;
-    }
-
-    // 2. Implicit flow: #access_token=...&refresh_token=...
-    if (uri.fragment.isNotEmpty) {
-      try {
-        final fragment = Uri.splitQueryString(uri.fragment);
-
-        final accessToken = fragment['access_token'];
-        final refreshToken = fragment['refresh_token'];
-
-        if (accessToken != null && refreshToken != null) {
-          await supabase.auth.setSession(refreshToken);
-
-          debugPrint("Implicit session restored successfully");
-        }
-      } catch (e, stackTrace) {
-        debugPrint("Implicit session restoration FAILED: $e");
-        debugPrintStack(stackTrace: stackTrace);
-      }
-    }
+    await _handleDeepLink(uri);
   });
 
   // Enable edge-to-edge mode
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await initializeDateFormatting('de_DE', null);
   runApp(const MyApp());
+}
+
+Future<void> _handleDeepLink(Uri uri) async {
+  if (uri.scheme != 'com.enduvo.app' ||
+      uri.host != 'login-callback') {
+    return;
+  }
+
+  // 1. PKCE flow: ?code=...
+  final code = uri.queryParameters['code'];
+
+  if (code != null) {
+    try {
+      await supabase.auth.exchangeCodeForSession(code);
+      debugPrint("PKCE code exchanged successfully");
+    } catch (e, stackTrace) {
+      debugPrint("PKCE exchange FAILED: $e");
+      debugPrintStack(stackTrace: stackTrace);
+    }
+    return;
+  }
+
+  // 2. Implicit flow: #access_token=...&refresh_token=...
+  if (uri.fragment.isNotEmpty) {
+    try {
+      final fragment = Uri.splitQueryString(uri.fragment);
+      final accessToken = fragment['access_token'];
+      final refreshToken = fragment['refresh_token'];
+
+      if (accessToken != null && refreshToken != null) {
+        await supabase.auth.setSession(refreshToken);
+        debugPrint("Implicit session restored successfully");
+      }
+    } catch (e, stackTrace) {
+      debugPrint("Implicit session restoration FAILED: $e");
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
 }
 
 // the main app widget
