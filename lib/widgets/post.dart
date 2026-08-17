@@ -38,10 +38,44 @@ class _ShimmerPlaceholder extends StatelessWidget {
   }
 }
 
+// Two-point snap physics: always settles on the image (offset 0) or the
+// map (maxScrollExtent), taking the fling velocity into account so a
+// decisive swipe commits to the target even mid-drag.
+class _CarouselSnapPhysics extends ScrollPhysics {
+  const _CarouselSnapPhysics({super.parent});
+
+  @override
+  _CarouselSnapPhysics applyTo(ScrollPhysics? ancestor) {
+    return _CarouselSnapPhysics(parent: buildParent(ancestor));
+  }
+
+  double _snapTarget(ScrollMetrics position, double velocity) {
+    final max = position.maxScrollExtent;
+    const velocityThreshold = 300.0;
+    if (velocity > velocityThreshold) return max;
+    if (velocity < -velocityThreshold) return 0.0;
+    return position.pixels < max / 2 ? 0.0 : max;
+  }
+
+  @override
+  Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) {
+    final target = _snapTarget(position, velocity);
+    final tolerance = toleranceFor(position);
+    if ((position.pixels - target).abs() < tolerance.distance &&
+        velocity.abs() < tolerance.velocity) {
+      return null;
+    }
+    return ScrollSpringSimulation(spring, position.pixels, target, velocity, tolerance: tolerance);
+  }
+
+  @override
+  bool get allowImplicitScrolling => false;
+}
+
 class PostCard extends StatefulWidget {
   final Post post;
   final bool showImageMain;
-  final ValueChanged<bool> onToggle; // parent is rebuild when calling 
+  final ValueChanged<bool> onToggle; // parent is rebuild when calling
   final String usernameCreator;
   final String? avatarUrlCreator;
   final List participantIds;
@@ -81,6 +115,14 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   bool _mapReady = false;
   Timer? _mapRevealTimer;
   bool _locationNoticeExpanded = false;
+
+  // Image/map carousel state. The media box is always a 4:3 box; the
+  // image is shown at 1:1 (so it doesn't fill the box width), and a
+  // sliver of the map peeks in on the right as a swipe affordance.
+  // Swiping snaps between "image" (offset 0) and "map" (max extent).
+  final ScrollController _carouselController = ScrollController();
+  bool _carouselShowingImage = true;
+  bool _carouselInitialPositionApplied = false;
 
   String get _mapUrl {
     final dpr = WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
@@ -169,7 +211,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
       final List<String> userIds = (response as List)
           .map((row) => row['user_id'] as String)
           .toList();
-      
+
       return userIds;
     }
     catch (e) {
@@ -295,68 +337,77 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     );
   }
 
-  Widget _buildMap({double initialZoom = 13, bool showMarker = true, bool showLocationMarker = true}) {
+  /// Builds the map view. When [asAspectRatioBox] is true the map wraps
+  /// itself in a 4:3 AspectRatio box (used for map-only posts, which are
+  /// unchanged). When false, the caller (the carousel) is responsible for
+  /// sizing it via a fixed-size parent.
+  Widget _buildMap({
+    double initialZoom = 13,
+    bool showMarker = true,
+    bool showLocationMarker = true,
+    bool asAspectRatioBox = true,
+  }) {
     final location = (widget.post.latitude != null && widget.post.longitude != null)
         ? LatLng(widget.post.latitude!, widget.post.longitude!)
         : LatLng(0.0, 0.0);
 
-    return AspectRatio(
-      aspectRatio: widget.post.imgurl != null ? 1 / 1 : 4 / 3,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          FlutterMap(
-            options: MapOptions(
-              initialCenter: location,
-              initialZoom: initialZoom,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.none,
-              ),
+    final content = Stack(
+      fit: StackFit.expand,
+      children: [
+        FlutterMap(
+          options: MapOptions(
+            initialCenter: location,
+            initialZoom: initialZoom,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.none,
             ),
-            children: [
-            TileLayer(
-              urlTemplate: _mapUrl,
-              userAgentPackageName: 'com.robert.app',
-              // maxNativeZoom: 20, // let MapTiler serve its sharpest available tile
-              tileDisplay: const TileDisplay.fadeIn(duration: Duration(milliseconds: 250)),
-            ),
-              if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: location,
-                      width: MapPinMarker.bodyDiameter,
-                      height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
-                      alignment: Alignment.topCenter,
-                      child: 
-                      widget.post.activity == null
+          ),
+          children: [
+          TileLayer(
+            urlTemplate: _mapUrl,
+            userAgentPackageName: 'com.robert.app',
+            // maxNativeZoom: 20, // let MapTiler serve its sharpest available tile
+            tileDisplay: const TileDisplay.fadeIn(duration: Duration(milliseconds: 250)),
+          ),
+            if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: location,
+                    width: MapPinMarker.bodyDiameter,
+                    height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
+                    alignment: Alignment.topCenter,
+                    child:
+                    widget.post.activity == null
+                    ? MapPinMarker(activity: "Run")
+                    : widget.post.activity == "Run"
                       ? MapPinMarker(activity: "Run")
-                      : widget.post.activity == "Run"
-                        ? MapPinMarker(activity: "Run")
-                        : MapPinMarker(activity: "Bike")
-                    ),
-                  ],
-                )
-            ],
-          ),
-          if (showLocationMarker)
-            _buildLocationNotice(),
+                      : MapPinMarker(activity: "Bike")
+                  ),
+                ],
+              )
+          ],
+        ),
+        if (showLocationMarker)
+          _buildLocationNotice(),
 
-          // Shimmer covers the map until the reveal window closes,
-          // then fades out. IgnorePointer while showing so it doesn't
-          // swallow taps meant for the map/card underneath.
-          IgnorePointer(
-            ignoring: _mapReady,
-            child: AnimatedOpacity(
-              opacity: _mapReady ? 0 : 1,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-              child: const _ShimmerPlaceholder(),
-            ),
+        // Shimmer covers the map until the reveal window closes,
+        // then fades out. IgnorePointer while showing so it doesn't
+        // swallow taps meant for the map/card underneath.
+        IgnorePointer(
+          ignoring: _mapReady,
+          child: AnimatedOpacity(
+            opacity: _mapReady ? 0 : 1,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+            child: const _ShimmerPlaceholder(),
           ),
-        ],
-      ),
+        ),
+      ],
     );
+
+    if (!asAspectRatioBox) return content;
+    return AspectRatio(aspectRatio: 4 / 3, child: content);
   }
 
   Widget buildShimmer() {
@@ -370,40 +421,45 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     );
   }
 
-  Widget _buildImage() {
-    return AspectRatio(
-      aspectRatio: 1 / 1,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(0),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.network(
-              widget.post.imgurl!,
-              fit: BoxFit.cover,
-              cacheWidth: (MediaQuery.of(context).size.width *
-                      MediaQuery.of(context).devicePixelRatio)
-                  .round(),
-              filterQuality: FilterQuality.low,
-              gaplessPlayback: true,
-              loadingBuilder: (context, child, progress) {
-                final loading = progress != null;
+  /// Builds the image view. When [asAspectRatioBox] is true it wraps
+  /// itself in a 1:1 AspectRatio box. When false, the caller (the
+  /// carousel) sizes it via a fixed-size parent. [renderWidth] lets the
+  /// caller pass the actual on-screen width so the network cache size
+  /// matches what's really displayed instead of the full device width.
+  Widget _buildImage({bool asAspectRatioBox = true, double? renderWidth}) {
+    final targetWidth = renderWidth ?? MediaQuery.of(context).size.width;
+    final content = ClipRRect(
+      borderRadius: BorderRadius.circular(0),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.network(
+            widget.post.imgurl!,
+            fit: BoxFit.cover,
+            cacheWidth: (targetWidth * MediaQuery.of(context).devicePixelRatio)
+                .round(),
+            filterQuality: FilterQuality.low,
+            gaplessPlayback: true,
+            loadingBuilder: (context, child, progress) {
+              final loading = progress != null;
 
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    child,
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  child,
 
-                    if (loading)
-                      const _ShimmerPlaceholder(),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
+                  if (loading)
+                    const _ShimmerPlaceholder(),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
+
+    if (!asAspectRatioBox) return content;
+    return AspectRatio(aspectRatio: 1 / 1, child: content);
   }
 
   Widget _buildChip(IconData icon, String label) {
@@ -418,28 +474,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
       ],
     );
   }
-
-  // Widget _buildChip(IconData icon, String label) {
-  //   return Row(
-  //     mainAxisSize: MainAxisSize.min,
-  //     children: [
-  //       Icon(
-  //         icon,
-  //         size: 18,
-  //         color: Colors.grey.shade600,
-  //       ),
-  //       const SizedBox(width: 5),
-  //       Text(
-  //         label,
-  //         style: TextStyle(
-  //           fontSize: 13,
-  //           fontWeight: FontWeight.w600,
-  //           color: Colors.grey.shade700,
-  //         ),
-  //       ),
-  //     ],
-  //   );
-  // }
 
   void _openActivity() async {
     final refreshPost = await Navigator.push(
@@ -467,21 +501,267 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     if (!mounted) return;
   }
 
+  // Snaps the carousel to whichever side (image / map) is closer once a
+  // scroll gesture ends, and notifies the parent so its state stays in
+  // sync with what's actually showing.
+  void _snapCarousel(double maxScrollExtent) {
+    if (!_carouselController.hasClients || maxScrollExtent <= 0) return;
+    final offset = _carouselController.offset.clamp(0.0, maxScrollExtent);
+    final showingImage = offset < maxScrollExtent / 2;
+    if (showingImage != _carouselShowingImage) {
+      _carouselShowingImage = showingImage;
+      widget.onToggle(showingImage);
+    }
+  }
+
+  Widget _buildDot(double activeness) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      width: 6 + 4 * activeness,
+      height: 6,
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.5 + 0.5 * activeness),
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 3,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCarouselIndicator(double maxScrollExtent) {
+    return Positioned(
+      bottom: 14,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: Center(
+          child: AnimatedBuilder(
+            animation: _carouselController,
+            builder: (context, _) {
+              double t = 0;
+              if (_carouselController.hasClients && maxScrollExtent > 0) {
+                t = (_carouselController.offset / maxScrollExtent).clamp(0.0, 1.0);
+              }
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildDot(1 - t),
+                  const SizedBox(width: 6),
+                  _buildDot(t),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Small fading chevron sitting right where the map starts to peek
+  // through, hinting that there's more to swipe to. Fades out as soon
+  // as the user starts dragging towards the map.
+  Widget _buildCarouselHint(double imageWidth) {
+    return Positioned(
+      left: imageWidth - 28,
+      top: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _carouselController,
+          builder: (context, _) {
+            double t = 0;
+            if (_carouselController.hasClients &&
+                _carouselController.position.hasContentDimensions &&
+                _carouselController.position.maxScrollExtent > 0) {
+              t = (_carouselController.offset /
+                      _carouselController.position.maxScrollExtent)
+                  .clamp(0.0, 1.0);
+            }
+            // Fade out within the first ~30% of the swipe instead of
+            // over the whole gesture, so it doesn't appear to travel
+            // along with the sliding content.
+            final fadeProgress = (t / 0.3).clamp(0.0, 1.0);
+            return Center(
+              child: Opacity(
+                opacity: (1 - fadeProgress) * 0.85,
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.35),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+    // Mirror of _buildCarouselHint: sits just inside the map, hinting you
+  // can swipe back to the image. Visible near the map side, fades out
+  // quickly within the first ~30% of the swipe back towards the image.
+  Widget _buildCarouselHintReverse(double imageWidth, double gap) {
+    return Positioned(
+      left: gap + 28,
+      top: 0,
+      bottom: 0,
+      width: 26,
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _carouselController,
+          builder: (context, _) {
+            double t = 0;
+            if (_carouselController.hasClients &&
+                _carouselController.position.hasContentDimensions &&
+                _carouselController.position.maxScrollExtent > 0) {
+              t = (_carouselController.offset /
+                      _carouselController.position.maxScrollExtent)
+                  .clamp(0.0, 1.0);
+            }
+            final distanceFromMapSide = 1 - t;
+            final fadeProgress = (distanceFromMapSide / 0.3).clamp(0.0, 1.0);
+            return Center(
+              child: Opacity(
+                opacity: (1 - fadeProgress) * 0.85,
+                child: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.35),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.chevron_left_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// The media section for posts with an image: a fixed 4:3 box holding
+  /// a horizontally swipeable strip. The image renders at 1:1 (square),
+  /// which leaves a sliver of the map peeking in on the right, with a
+  /// thin white gap between them. Swiping snaps between the two states.
+  Widget _buildImageMapCarousel() {
+    const double gap = 12;
+
+    return AspectRatio(
+      aspectRatio: 4 / 3,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double boxHeight = constraints.maxHeight;
+          final double boxWidth = constraints.maxWidth;
+          final double imageWidth = boxHeight; // 1:1 square
+          final double maxScrollExtent = imageWidth + gap;
+
+          if (!_carouselInitialPositionApplied) {
+            _carouselInitialPositionApplied = true;
+            if (!widget.showImageMain) {
+              _carouselShowingImage = false;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (!mounted || !_carouselController.hasClients) return;
+                _carouselController.jumpTo(maxScrollExtent);
+              });
+            }
+          }
+
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (notification is ScrollEndNotification) {
+                    _snapCarousel(maxScrollExtent);
+                  }
+                  return false;
+                },
+                child: SingleChildScrollView(
+                  controller: _carouselController,
+                  scrollDirection: Axis.horizontal,
+                  physics: const _CarouselSnapPhysics(),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: imageWidth,
+                        height: boxHeight,
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.only(
+                            topRight: Radius.circular(22),
+                            bottomRight: Radius.circular(22),
+                          ),
+                          child: _buildImage(
+                            asAspectRatioBox: false,
+                            renderWidth: imageWidth,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: gap,
+                        height: boxHeight,
+                        child: const ColoredBox(color: Colors.transparent),
+                      ),
+                      SizedBox(
+                        width: boxWidth,
+                        height: boxHeight,
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(22),
+                            bottomLeft: Radius.circular(22),
+                          ),
+                          child: _buildMap(asAspectRatioBox: false),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // _buildCarouselHint(imageWidth),
+              // _buildCarouselHintReverse(imageWidth, gap),
+              _buildCarouselIndicator(maxScrollExtent),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   // initial fetch when page is first opened
   @override
   void initState() {
     super.initState();
+    _carouselShowingImage = widget.showImageMain;
     loadAll();
     // Kick off the map's shimmer-to-reveal window once per card, right
     // away — regardless of whether the map or the image is the main
-    // view right now, since the map is also rendered as the small
-    // corner preview when the image is main.
+    // view right now, since the map is also rendered as part of the
+    // carousel when the image is main.
     _scheduleMapReveal();
   }
 
   @override
   void dispose() {
     _mapRevealTimer?.cancel();
+    _carouselController.dispose();
     super.dispose();
   }
 
@@ -581,7 +861,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                                 color: Colors.white,
                                 size: 18,
                                 )
-                              : null,   
+                              : null,
                         ),
                       ]
                     ),
@@ -631,10 +911,10 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                           children: [
                             _buildChip(Icons.route, widget.post.distance != null ? "${dataFormatter.formatDistance(widget.post.distance!)} km" : "-"),
                             const SizedBox(width: 8),
-                            _buildChip(Icons.speed, 
-                              widget.post.activity == "Run" ? 
+                            _buildChip(Icons.speed,
+                              widget.post.activity == "Run" ?
                                 widget.post.pace != null ? dataFormatter.formatPace(widget.post.pace!) : "-"
-                                : widget.post.activity == "Bike" ? 
+                                : widget.post.activity == "Bike" ?
                                   widget.post.speed != null ? "${widget.post.speed!.toString()} km/h" : "-"
                                   : "-"),
                           ],
@@ -665,51 +945,9 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(22),
                   child: widget.post.imgurl != null
-                      ? Stack(
-                          children: [
-                            // Main media
-                            widget.showImageMain
-                              ? _buildImage()
-                              : _buildMap(), 
-                            // Small floating preview
-                            Positioned(
-                              bottom: 14,
-                              left: 14,
-                              child: GestureDetector(
-                                onTap: () {
-                                  widget.onToggle(!widget.showImageMain);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.9),
-                                    borderRadius: BorderRadius.circular(18),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(15),
-                                    child: SizedBox(
-                                      width: 76,
-                                      height: 76,
-                                      child: widget.showImageMain
-                                            ? IgnorePointer(
-                                                child: _buildMap(
-                                                  initialZoom: 10,
-                                                  showMarker: false,
-                                                  showLocationMarker: false,
-                                                ),
-                                              )
-                                          : Image.network(
-                                              widget.post.imgurl!,
-                                              fit: BoxFit.cover,
-                                            ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      // No image -> only map
+                      // Image + map, swipeable, both inside a fixed 4:3 box.
+                      ? _buildImageMapCarousel()
+                      // No image -> only map, unchanged.
                       : _buildMap(),
                 ),
               )
