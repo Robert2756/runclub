@@ -422,7 +422,7 @@ class _HistoryPageState extends State<HistoryPage> {
         child: Stack(
           children: [
             // Background image
-            if (post.imgurl != null)
+            if (post.imgurl != null)...[
               Positioned.fill(
                 child: Transform.scale(
                   scale: 1.4,
@@ -448,6 +448,25 @@ class _HistoryPageState extends State<HistoryPage> {
                   ),
                 ),
               ),
+            ]
+          else ...[
+            // Fallback background
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      EnduvoColors.navy,
+                      EnduvoColors.deepBlue,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+
 
             // Dark overlay
             // Positioned.fill(
@@ -482,6 +501,8 @@ class _HistoryPageState extends State<HistoryPage> {
 
                   Text(
                     post.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.bold,

@@ -328,7 +328,12 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                       width: MapPinMarker.bodyDiameter,
                       height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
                       alignment: Alignment.topCenter,
-                      child: const MapPinMarker(),
+                      child: 
+                      widget.post.activity == null
+                      ? MapPinMarker(activity: "Run")
+                      : widget.post.activity == "Run"
+                        ? MapPinMarker(activity: "Run")
+                        : MapPinMarker(activity: "Bike")
                     ),
                   ],
                 )

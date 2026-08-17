@@ -226,8 +226,8 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                   backgroundImage: NetworkImage(_avatarUrl!),
                 )
               : const Icon(Icons.person_outline),
-            onPressed: () {
-                Navigator.push(
+            onPressed: () async {
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => ProfilePage(
@@ -235,6 +235,10 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
                   ),
                 ),
               );
+
+              if (!mounted) return;
+
+              await fetchProfileImage();
             },
           ),
         ],

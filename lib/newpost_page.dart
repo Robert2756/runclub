@@ -822,8 +822,10 @@ class _LocationSection extends StatelessWidget {
                   0,
                   -(MapPinMarker.tailHeight / 2),
                 ),
-                child: const MapPinMarker(),
-              ),
+                child: MapPinMarker(
+                  activity: activity == "Laufen" ? "Run" : "Bike",
+                ),
+              )
             ),
           ),
         ],
@@ -2087,9 +2089,20 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
                 }
               },
 
-              onLocationChanged: (point) {
+              onLocationChanged: (point) async {
                 setState(() {
                   mapCenter = point;
+                });
+
+                final town = await mapService.getTownFromCoordinates(
+                  point.latitude,
+                  point.longitude,
+                );
+
+                if (!mounted) return;
+
+                setState(() {
+                  postTown = town;
                 });
               },
 

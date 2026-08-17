@@ -52,15 +52,16 @@ class _MapPinPainter extends CustomPainter {
 
     // Body fill
     final fillPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          // const Color.fromARGB(255, 0, 0, 0),
-          EnduvoColors.navy,
-          EnduvoColors.navy,
-        ],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, bodyDiameter));
+      // ..shader = LinearGradient(
+      //   begin: Alignment.topCenter,
+      //   end: Alignment.bottomCenter,
+      //   colors: [
+      //     // const Color.fromARGB(255, 0, 0, 0),
+      //     EnduvoColors.navy,
+      //     EnduvoColors.navy,
+      //   ],
+      // ).createShader(Rect.fromLTWH(0, 0, size.width, bodyDiameter));
+      ..color = EnduvoColors.navy.withOpacity(0.86);
     canvas.drawPath(pinPath, fillPaint);
   }
 
@@ -75,7 +76,12 @@ class MapPinMarker extends StatelessWidget {
   static const double tailHeight = 3;
   static const double iconSize = 18;
 
-  const MapPinMarker();
+  final String activity;
+
+  const MapPinMarker({
+    super.key,
+    required this.activity,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -95,8 +101,10 @@ class MapPinMarker extends StatelessWidget {
           Positioned(
             top: (bodyDiameter - iconSize) / 2,
             left: (bodyDiameter - iconSize) / 2,
-            child: const Icon(
-              Icons.directions_bike,
+            child: Icon(
+              activity == "Bike"
+              ? Icons.directions_bike
+              : Icons.directions_run,
               size: iconSize,
               color: Color.fromARGB(255, 255, 255, 255),
             ),

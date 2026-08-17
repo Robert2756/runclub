@@ -46,7 +46,11 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
-  final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+  // final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+
+  String get mapUrl {
+    return 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+  }
 
   bool get isPast {
     final dt = DateTime.tryParse("${widget.post.date} ${widget.post.time}") ?? DateTime.now();
@@ -115,62 +119,34 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
     }
   }
 
-  Widget _buildMap({double initialZoom = 13, bool showMarker = true}) {
-    final location = (widget.post.latitude != null && widget.post.longitude != null)
-        ? LatLng(widget.post.latitude!, widget.post.longitude!)
-        : LatLng(0.0, 0.0);
+  Widget _buildMap({double initialZoom = 12, bool showMarker = true}) {
+    if (widget.post.latitude == null || widget.post.longitude == null) {
+      return Container(
+        width: 70,
+        height: 70,
+        color: Colors.grey.shade100,
+      );
+    }
 
-    return AspectRatio(
-      aspectRatio: widget.post.imgurl != null ? 1 / 1 : 4 / 3,
-      child: FlutterMap(
-        options: MapOptions(
-          initialCenter: location,
-          initialZoom: initialZoom,
-          interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.none,
-          ),
+    final location = LatLng(
+      widget.post.latitude!,
+      widget.post.longitude!,
+    );
+
+    return FlutterMap(
+      options: MapOptions(
+        initialCenter: location,
+        initialZoom: initialZoom,
+        interactionOptions: const InteractionOptions(
+          flags: InteractiveFlag.none,
         ),
-        children: [
-          // TileLayer(
-          //   urlTemplate: mapUrl,
-          //   userAgentPackageName: 'com.robert.app',
-          // ),
-          // if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
-            // MarkerLayer(
-            //   markers: [
-            //     if (widget.post.latitude != null && widget.post.longitude != null)
-            //       Marker(
-            //         point: LatLng(widget.post.latitude!, widget.post.longitude!),
-            //         width: 42,
-            //         height: 46,
-            //         alignment: Alignment.topCenter,
-            //           child: Container(
-            //             decoration: BoxDecoration(
-            //               color: Colors.white,
-            //               borderRadius: BorderRadius.circular(14),
-            //               boxShadow: [
-            //                 BoxShadow(
-            //                   color: Colors.black.withOpacity(0.18),
-            //                   blurRadius: 14,
-            //                   offset: const Offset(0, 6),
-            //                 ),
-            //               ],
-            //             ),
-            //             child: Center(
-            //               child: Icon(
-            //                 widget.post.activity == "Bike"
-            //                     ? Icons.directions_bike
-            //                     : Icons.directions_run,
-            //                 color: Colors.black,
-            //                 size: 18,
-            //               ),
-            //             ),
-            //           ),
-            //       ),
-            //   ],
-            // ),
-        ],
       ),
+      children: [
+        TileLayer(
+          urlTemplate: mapUrl,
+          userAgentPackageName: 'com.robert.app',
+        ),
+      ],
     );
   }
 
@@ -251,7 +227,7 @@ class _PostHistoryState extends State<PostHistory> with RouteAware, AutomaticKee
                           ),
                         ],
                       )
-                      : _buildMap(initialZoom: 12),
+                      : _buildMap(initialZoom: 10),
                 ),
               ),
 

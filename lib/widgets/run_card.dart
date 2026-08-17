@@ -159,7 +159,7 @@ class _RunCardState extends State<RunCard> {
     return FlutterMap(
       options: MapOptions(
         initialCenter: location,
-        initialZoom: 11,
+        initialZoom: 10,
         interactionOptions: const InteractionOptions(
           flags: InteractiveFlag.none,
         ),

@@ -990,19 +990,75 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
   }
 
   // upload profile image
-  Future<void> uploadProfileImage(String userId, File? compressedImage) async {
+  Future<void> uploadProfileImage(
+    String userId,
+    File? compressedImage,
+  ) async {
     if (compressedImage == null) return;
-    final path = '$userId.png'; // lowercase bucket name
 
-    await supabase.storage.from('ProfileImages').upload(
-      path,
-      compressedImage,
-      fileOptions: FileOptions(upsert: true),
-    );
-    // Get public URL as string
-    final url = supabase.storage.from('ProfileImages').getPublicUrl(path);
-    // Save URL in profile table
-    await supabase.from('profiles').update({'avatar_url': url}).eq('id', userId);
+    // Get the currently stored avatar URL first.
+    final oldProfile = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', userId)
+        .single();
+
+    final oldUrl = oldProfile['avatar_url'] as String?;
+
+    // Use a unique filename so caches can never serve the old image.
+    final newPath =
+        '$userId-${DateTime.now().millisecondsSinceEpoch}.png';
+
+    try {
+      // 1. Upload the new image first.
+      await supabase.storage.from('ProfileImages').upload(
+        newPath,
+        compressedImage,
+        fileOptions: const FileOptions(
+          contentType: 'image/png',
+        ),
+      );
+
+      // 2. Get the new public URL.
+      final newUrl = supabase.storage
+          .from('ProfileImages')
+          .getPublicUrl(newPath);
+
+      // 3. Update the database.
+      await supabase
+          .from('profiles')
+          .update({'avatar_url': newUrl})
+          .eq('id', userId);
+
+      // 4. Only now delete the old image.
+      if (oldUrl != null && oldUrl.isNotEmpty) {
+        try {
+          final oldUri = Uri.parse(oldUrl);
+
+          // Extract the path after /ProfileImages/
+          final marker = '/ProfileImages/';
+          final index = oldUri.path.indexOf(marker);
+
+          if (index != -1) {
+            final oldPath = oldUri.path.substring(
+              index + marker.length,
+            );
+
+            await supabase.storage
+                .from('ProfileImages')
+                .remove([oldPath]);
+          }
+        } catch (e) {
+          // The new avatar is already working, so don't fail
+          // the whole operation just because cleanup failed.
+          debugPrint('Could not delete old avatar: $e');
+        }
+      }
+    } catch (e) {
+      // If upload or DB update fails, the old avatar remains untouched.
+      debugPrint('Profile image upload failed: $e');
+      rethrow;
+    }
   }
 
   // fetch profile image when loading the page
@@ -1332,15 +1388,18 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
 
   void _inviteUser() async {
     final myId = supabase.auth.currentUser!.id;
+    final profileId = widget.profileId;
 
     final today = DateTime.now().toIso8601String().split('T')[0];
 
-    final res = await supabase
-        .from('posts')
-        .select()
-        .eq('creator_id', myId)
-        .gte('date', today)
-        .order('date', ascending: true);
+    final res = await supabase.rpc(
+      'get_invitable_posts',
+      params: {
+        'p_creator_id': myId,
+        'p_profile_id': profileId,
+        'p_today': today,
+      },
+    );
 
     final now = DateTime.now();
 
@@ -1386,7 +1445,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
 
     if (runs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Keine kommenden Runs verfügbar")),
+        const SnackBar(content: Text("Keine freie Aktivität vorhanden")),
       );
       return;
     }
@@ -1489,19 +1548,67 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
         actions: [
           if (isMe) ...[
             IconButton(
-              tooltip: 'Sign out',
+              tooltip: 'Abmelden',
               icon: const Icon(Icons.logout),
               onPressed: () async {
-                await supabase.auth.signOut();
-
-                if(!context.mounted) return;
-
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(
-                    builder: (_) => const SignInPage(),
-                  ),
-                  (route) => false,
+                final shouldSignOut = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogContext) {
+                    return AlertDialog(
+                      backgroundColor: Colors.white,
+                      surfaceTintColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      title: const Text(
+                        'Abmelden?',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      content: const Text(
+                        'Möchtest du dich wirklich von deinem Konto abmelden?',
+                        style: TextStyle(
+                          color: Colors.black87,
+                        ),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogContext, false),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.black,
+                          ),
+                          child: const Text('Abbrechen'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(dialogContext, true),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.black,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Abmelden'),
+                        ),
+                      ],
+                    );
+                  },
                 );
+
+                if (shouldSignOut != true) return;
+
+                try {
+                  await supabase.auth.signOut();
+                } catch (e) {
+                  debugPrint('Logout failed: $e');
+
+                  if (!context.mounted) return;
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Abmelden fehlgeschlagen. Bitte erneut versuchen.'),
+                    ),
+                  );
+                }
               },
             ),
             // IconButton(

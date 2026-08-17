@@ -1065,7 +1065,12 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                 width: MapPinMarker.bodyDiameter,
                 height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
                 alignment: Alignment.topCenter,
-                child: const MapPinMarker(),
+                child:                       
+                post!.activity == null
+                  ? MapPinMarker(activity: "Run")
+                  : post!.activity == "Run"
+                    ? MapPinMarker(activity: "Run")
+                    : MapPinMarker(activity: "Bike")
               ),
             ],
           )
