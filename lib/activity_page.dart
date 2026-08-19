@@ -1221,11 +1221,12 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     }
 
     try {
-      if (!await launchUrl(
-        url,
-        mode: LaunchMode.externalApplication,
-      )) {
-        debugPrint('Could not open maps: $url');
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not open Maps')),
+          );
+        }
       }
     } catch (e) {
       debugPrint('Error opening maps: $e');
@@ -1301,7 +1302,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
           // MAP PREVIEW (no card, just rounded clip)
           GestureDetector(
-            onTap: locked
+            onTap: locked || post?.latitude == null || post?.longitude == null
                 ? null
                 : () => openInMaps(post!.latitude!, post!.longitude!),
             child: AspectRatio(

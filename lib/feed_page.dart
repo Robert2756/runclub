@@ -11,6 +11,7 @@ import 'models/post.dart';
 import 'dart:math';
 import 'widgets/loader.dart';
 import 'services/location_picker.dart';
+import 'dart:async';
 final supabase = Supabase.instance.client;
 final imageService = ImageService();
 
@@ -195,18 +196,82 @@ class FeedPageState extends State<FeedPage> {
 
   Future<void> _initFeed() async {
     final saved = await LocationPrefs.load();
-    if (saved != null && saved.source == LocationSource.manual) {
-      _userLat = saved.lat;
-      _userLon = saved.lon;
-      _locationEnabled = true;
-      _locationSource = LocationSource.manual;
-      _locationLabel = saved.name;
-    } else {
-      await _initUserLocation();
-      _locationSource = LocationSource.gps;
-      _locationLabel = 'Standort'; // reverse-geocode later if you want the real city name
+    if (saved != null) {
+      _applyLocation(
+        lat: saved.lat, lon: saved.lon,
+        label: saved.name, source: saved.source,
+      );
+      await fetchCandidates();
+      return;
     }
+
+    final asked = await LocationPrefs.wasAsked();
+    if (!asked) {
+      // First launch ever — show our own rationale, then decide.
+      await _runFirstTimeLocationFlow();
+    } else {
+      // Already asked previously. Try a SILENT lookup only — no dialogs.
+      final cached = await tryGetDeviceLocation(preferCached: true);
+      if (cached != null) {
+        _applyLocation(
+          lat: cached.latitude, lon: cached.longitude,
+          label: 'Standort', source: LocationSource.gps,
+        );
+        unawaited(_resolveAndSaveLabel(cached.latitude, cached.longitude));
+      }
+      // else: stays unfiltered — banner in build() invites them to set it.
+    }
+
     await fetchCandidates();
+  }
+
+  Future<void> _runFirstTimeLocationFlow() async {
+    await LocationPrefs.markAsked();
+    if (!mounted) return;
+
+    final wantsGps = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const LocationPrimerDialog(),
+        ) ??
+        false;
+
+    if (!wantsGps) {
+      await _openLocationPicker();
+      return;
+    }
+
+    final position = await tryGetDeviceLocation(preferCached: false);
+    if (position != null) {
+      _applyLocation(
+        lat: position.latitude, lon: position.longitude,
+        label: 'Standort', source: LocationSource.gps,
+      );
+      unawaited(_resolveAndSaveLabel(position.latitude, position.longitude));
+    } else if (mounted) {
+      // Permission denied or service disabled -> fall back to manual picker.
+      await _openLocationPicker();
+    }
+  }
+
+  void _applyLocation({
+    required double lat,
+    required double lon,
+    required String label,
+    required LocationSource source,
+  }) {
+    _userLat = lat;
+    _userLon = lon;
+    _locationEnabled = true;
+    _locationSource = source;
+    _locationLabel = label;
+  }
+
+  Future<void> _resolveAndSaveLabel(double lat, double lon) async {
+    final town = await reverseGeocode(lat, lon);
+    final label = (town != null && town.isNotEmpty) ? town : 'In der Nähe';
+    await LocationPrefs.save(lat: lat, lon: lon, name: label, source: LocationSource.gps);
+    if (mounted) setState(() => _locationLabel = label);
   }
 
   Future<void> _refreshFeed() async {
@@ -299,18 +364,31 @@ class FeedPageState extends State<FeedPage> {
         final data = await supabase
             .from('posts')
             .select()
+            .gte('starts_at', DateTime.now().toUtc().toIso8601String())
             .order('created_at', ascending: false)
-            .range(_dbOffset, _dbOffset + candidate_size - 1);
+            .range(_dbOffset, _dbOffset + fetch_size - 1);
+
         if (currentVersion != _refreshVersion) return; // return if user refreshed feed
 
-        if (data.isEmpty) {
-          _hasMore = false;
-          _status = FeedStatus.exhausted;
-          return;
+        final prefilteredCandidates = List<Map<String, dynamic>>.from(data);
+        final filteredCandidates = prefilteredCandidates.where((p) =>
+          !seenPostIds.contains(p['id'].toString())
+        ).toList();
+
+        if (filteredCandidates.isEmpty) {
+          if (prefilteredCandidates.isEmpty) {
+            // truly nothing left in the DB from this offset onward
+            _hasMore = false;
+            _status = FeedStatus.exhausted;
+            return;
+          }
+          // page was all-seen (e.g. re-fetched same range); advance and try again
+          _dbOffset += fetch_size;
+          return await fetchCandidates();
         }
 
-        candidatePool.addAll(List<Map<String, dynamic>>.from(data));
-        _dbOffset += candidate_size;
+        candidatePool.addAll(filteredCandidates);
+        _dbOffset += fetch_size;
 
       } else {
         final lat = _userLat;
@@ -338,13 +416,13 @@ class FeedPageState extends State<FeedPage> {
             .lte('latitude', maxLat)
             .gte('longitude', minLon)
             .lte('longitude', maxLon)
-            .gte('starts_at', DateTime.now().toIso8601String())
+            .gte('starts_at', DateTime.now().toUtc().toIso8601String())
             .limit(fetch_size);
 
         // filter seen posts out
         final prefilteredCandidates = List<Map<String, dynamic>>.from(data);
         final filteredCandidates = prefilteredCandidates.where((p) =>
-          !seenPostIds.contains(p['id'])
+          !seenPostIds.contains(p['id'].toString())
         );
 
         if (currentVersion != _refreshVersion) return; // return if user refreshed feed
@@ -618,6 +696,34 @@ class FeedPageState extends State<FeedPage> {
                     ),
                   ),
                 ),
+                if (!_locationEnabled)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Material(
+                      color: EnduvoColors.background,
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _openLocationPicker,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.location_off_rounded, size: 18, color: EnduvoColors.deepBlue),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  'Standort nicht festgelegt — Aktivitäten werden nicht nach Nähe sortiert.',
+                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: EnduvoColors.text),
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right_rounded, size: 18, color: EnduvoColors.muted),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 Expanded(
                   child: NotificationListener<ScrollNotification>(
                     onNotification: (ScrollNotification scrollInfo) {

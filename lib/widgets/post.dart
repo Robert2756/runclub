@@ -18,6 +18,7 @@ import 'package:shimmer/shimmer.dart';
 import 'user_avatar.dart';
 import 'map_marker.dart';
 import 'dart:ui' as dart_ui;
+import 'package:cached_network_image/cached_network_image.dart';
 
 final supabase = Supabase.instance.client;
 final dataFormatter = DataFormatter();
@@ -473,24 +474,20 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
-            widget.post.imgurl!,
+          CachedNetworkImage(
+            imageUrl: widget.post.imgurl!,
             fit: BoxFit.cover,
-            cacheWidth: (targetWidth * MediaQuery.of(context).devicePixelRatio)
-                .round(),
+            memCacheWidth: (targetWidth * MediaQuery.of(context).devicePixelRatio).round(),
             filterQuality: FilterQuality.low,
-            gaplessPlayback: true,
-            loadingBuilder: (context, child, progress) {
-              final loading = progress != null;
-
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  child,
-
-                  if (loading)
-                    const _ShimmerPlaceholder(),
-                ],
+            fadeInDuration: Duration.zero,      // you already have your own shimmer transition; avoid double-fade
+            fadeOutDuration: Duration.zero,
+            placeholder: (context, url) => const _ShimmerPlaceholder(),
+            errorWidget: (context, url, error) {
+              return Container(
+                color: Colors.grey.shade200,
+                child: const Center(
+                  child: Icon(Icons.image_not_supported_outlined, size: 32, color: Colors.grey),
+                ),
               );
             },
           ),

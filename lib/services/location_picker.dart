@@ -62,6 +62,17 @@ class LocationPrefs {
   static const _kLon = 'user_location_lon';
   static const _kName = 'user_location_name';
   static const _kSource = 'user_location_source';
+  static const _kAsked = 'user_location_asked'; // NEW
+
+  static Future<void> markAsked() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAsked, true);
+  }
+
+  static Future<bool> wasAsked() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_kAsked) ?? false;
+  }
 
   static Future<void> save({
     required double lat,
@@ -527,6 +538,128 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
           ),
         );
       },
+    );
+  }
+}
+
+/// ---------------------------------------------------------------------
+/// LOCATION ACQUISITION (silent-first strategy)
+/// ---------------------------------------------------------------------
+
+/// Tries to get a device position without unnecessarily re-triggering
+/// system dialogs.
+///
+/// - [preferCached] = true: try Geolocator.getLastKnownPosition() first,
+///   which reads a cached fix with NO dialog and NO new GPS request.
+///   Use this on every app start after the first successful acquisition.
+/// - Uses LocationAccuracy.medium, not high: medium is enough for
+///   city/km-radius filtering and does NOT trigger Play Services'
+///   "Improve location accuracy" resolution dialog the way `high` does.
+Future<Position?> tryGetDeviceLocation({bool preferCached = true}) async {
+  try {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return null;
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return null;
+    }
+
+    if (preferCached) {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) return last;
+    }
+
+    return await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.medium,
+    ).timeout(const Duration(seconds: 8));
+  } catch (e) {
+    debugPrint('tryGetDeviceLocation error: $e');
+    return null;
+  }
+}
+
+/// Your own rationale dialog, shown once before the native permission
+/// prompt. Fully controlled by you — always German, regardless of
+/// device locale, unlike the native "improve accuracy" dialog.
+class LocationPrimerDialog extends StatelessWidget {
+  const LocationPrimerDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: 8,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      title: const Text(
+        'Standort verwenden?',
+        style: TextStyle(
+          color: Colors.black,
+          fontSize: 21,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
+        ),
+      ),
+      content: const Text(
+        'Mit deinem Standort zeigen wir dir Aktivitäten in deiner Nähe, '
+        'sortiert nach Entfernung. Ohne Standort siehst du nur eine '
+        'ungefilterte Liste aller Aktivitäten – auch weit entfernte.',
+        style: TextStyle(
+          color: Color(0xFF666666),
+          fontSize: 15,
+          height: 1.45,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.black,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
+          ),
+          child: const Text(
+            'Manuell festlegen',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 13,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          child: const Text(
+            'Standort erlauben',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
