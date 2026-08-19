@@ -1428,7 +1428,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
   Future<void> markChatAsRead() async {
     final userId = supabase.auth.currentUser!.id;
-    print("Now: ${DateTime.now().toIso8601String()}");
+    debugPrint("Now: ${DateTime.now().toIso8601String()}");
 
     await supabase
         .from('activity_participants')

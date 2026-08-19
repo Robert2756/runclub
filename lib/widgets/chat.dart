@@ -33,7 +33,7 @@ class Message {
 
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(
-      id: json['id'].toString(),
+      id: json['message_id'].toString(),
       userId: json['user_id'],
       type: _parseType(json['type']),
       content: json['content'],
@@ -218,20 +218,39 @@ class _ActivityChatState extends State<ActivityChat> {
         value: widget.post!.id,
       ),
       callback: (payload) async {
+        debugPrint('Realtime INSERT payload: ${payload.newRecord}');
         final msg = Message.fromJson(payload.newRecord);
 
-        final alreadyExists = _messages.any((m) =>
-            m.id == msg.id ||
-            (m.content == msg.content &&
-            m.userId == msg.userId &&
-            (DateTime.now().difference(m.createdAt).inSeconds < 5))
-        );
+        setState(() {
+          // search for temp message -> return index
+          final tempIndex = _messages.indexWhere((m) =>
+              m.id.startsWith('temp-') &&
+              m.content == msg.content &&
+              m.userId == msg.userId &&
+              DateTime.now().difference(m.createdAt).inSeconds < 5);
 
-        if (alreadyExists) return;
+          // replace with database message or insert message when from another user (else if)
+          if (tempIndex != -1) {
+            _messages[tempIndex] = msg;
+          } else if (!_messages.any((m) => m.id == msg.id)) {
+            _messages.insert(0, msg);
+          }
+        });
 
-        setState(() => _messages.insert(0, msg));
-      }
-    ).subscribe();
+        // Mark as read immediately since the user is actively viewing the chat
+        if (widget.isActive && msg.userId != supabase.auth.currentUser!.id) {
+          debugPrint("Update last read");
+          await supabase
+              .from('activity_participants')
+              .update({'last_read_at': DateTime.now().toIso8601String()})
+              .eq('post_id', widget.post!.id)
+              .eq('user_id', supabase.auth.currentUser!.id);
+        }
+
+      },
+    ).subscribe((status, [error]) {
+      debugPrint('Realtime status: $status, error: $error');
+    });
   }
 
   /// ----------------------
