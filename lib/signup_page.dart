@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signin_page.dart';
-import 'checkEmailPage.dart';
 import 'package:go_router/go_router.dart';
 
 final supabase = Supabase.instance.client;
@@ -20,11 +19,13 @@ class _SignUpPageState extends State<SignUpPage> {
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
+    confirmPasswordController.dispose();
     super.dispose();
   }
 
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final confirmPasswordController = TextEditingController();
 
   bool loading = false;
   String? error;
@@ -32,7 +33,8 @@ class _SignUpPageState extends State<SignUpPage> {
   Future<void> signUp() async {
     final email = emailController.text;
     final password = passwordController.text;
-    final validationError = _validateInput(email, password);
+    final confirmPassword = confirmPasswordController.text;
+    final validationError = _validateInput(email, password, confirmPassword);
 
     if (validationError != null) {
       setState(() {
@@ -97,7 +99,7 @@ class _SignUpPageState extends State<SignUpPage> {
     }
   }
 
-  String? _validateInput(String email, String password) {
+  String? _validateInput(String email, String password, String confirmPassword) {
     if (email.isEmpty) {
       return "Bitte gib eine E-Mail-Adresse ein.";
     }
@@ -128,6 +130,14 @@ class _SignUpPageState extends State<SignUpPage> {
 
     if (password.length > 72) {
       return "Das Passwort darf maximal 72 Zeichen enthalten.";
+    }
+
+    if (confirmPassword.isEmpty) {
+      return "Bitte bestätige dein Passwort.";
+    }
+
+    if (password != confirmPassword) {
+      return "Die Passwörter stimmen nicht überein.";
     }
 
     return null;
@@ -284,6 +294,17 @@ class _SignUpPageState extends State<SignUpPage> {
                             obscureText: true,
                             decoration: _inputDecoration(
                               label: "Passwort",
+                              icon: Icons.lock_outline,
+                            ),
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          TextField(
+                            controller: confirmPasswordController,
+                            obscureText: true,
+                            decoration: _inputDecoration(
+                              label: "Passwort bestätigen",
                               icon: Icons.lock_outline,
                             ),
                           ),

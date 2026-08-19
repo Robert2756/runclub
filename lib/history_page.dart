@@ -154,8 +154,14 @@ class _HistoryPageState extends State<HistoryPage> {
       monthLoading[key] = true;
     });
 
-    final start = DateTime(year, month, 1);
-    final end = DateTime(year, month + 1, 0, 23, 59, 59);
+    final start = DateTime(year, month, 1).toUtc();
+    final endOfMonth = DateTime(year, month + 1, 0, 23, 59, 59).toUtc();
+    final nowUtc = DateTime.now().toUtc();
+
+    // Never query past "now" — a month can be partially in the future
+    // (the current month), and this tab must only ever show activities
+    // that have already happened.
+    final effectiveEnd = endOfMonth.isBefore(nowUtc) ? endOfMonth : nowUtc;
 
     final userId = supabase.auth.currentUser!.id;
 
@@ -168,7 +174,7 @@ class _HistoryPageState extends State<HistoryPage> {
         .eq('activity_participants.user_id', userId)
         .eq('activity_participants.status', 'joined')
         .gte('starts_at', start.toIso8601String())
-        .lte('starts_at', end.toIso8601String());
+        .lt('starts_at', effectiveEnd.toIso8601String()); // lt, matching the "past" query above
 
     final posts = result.map<Post>((e) {
       return Post(
@@ -633,19 +639,43 @@ class _HistoryPageState extends State<HistoryPage> {
     required IconData icon,
     required String message,
   }) {
-    return SizedBox(
-      height: 260, // tweak between 220-320
-      child: Center(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: EnduvoColors.border,
+          ),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: EnduvoColors.background,
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: EnduvoColors.muted,
+              ),
+            ),
+            const SizedBox(height: 14),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade500,
+              style: const TextStyle(
+                fontSize: 13.5,
+                color: EnduvoColors.muted,
                 fontWeight: FontWeight.w500,
+                height: 1.4,
               ),
             ),
           ],
@@ -732,7 +762,7 @@ class _HistoryPageState extends State<HistoryPage> {
                           const SizedBox(height: 8),
 
                           Text(
-                            "Tritt einem Lauf oder einer Radtour bei und dein nächstes Event erscheint hier.",
+                            "Tritt einer Aktivität aus dem Feed bei.",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 14,
@@ -758,7 +788,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   const SizedBox(height: 12),
                     _buildSoftEmptyState(
                       icon: Icons.calendar_today_outlined,
-                      message: "Weitere anstehende Events erscheinen hier.",
+                      message: "Weitere anstehende Aktivitäten",
                     )
                 ]
               ] else ...[
@@ -769,7 +799,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   const SizedBox(height: 12),
                     _buildSoftEmptyState(
                       icon: Icons.history_rounded,
-                      message: "Vergangene Aktivitäten erscheinen hier.",
+                      message: "Vergangene Aktivitäten",
                     )
                 ]
               ]

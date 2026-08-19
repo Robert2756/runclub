@@ -100,6 +100,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   bool _descExpanded = false;
   bool _joined = false;
   List<String> _participantAvatars = [];
+  List<String> _participantIds = [];
   List<String> debugParticipants = [];
   bool isReady = false;
   final bullet = " •\u200B ";
@@ -151,6 +152,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
 
     if (oldWidget.post.id != widget.post.id) {
       _imageLoaded = false;
+      _participantIds = List<String>.from(widget.participantIds);
     }
   }
 
@@ -191,12 +193,50 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
           ...avatars,
           ...debugParticipants
         ];
+        _participantIds = List<String>.from(widget.participantIds);
         _joined = joinedRes != null;
         isReady = true;
       });
 
     } catch (e) {
       debugPrint("loadAll error: $e");
+    }
+  }
+
+  Future<void> _refreshParticipants() async {
+    try {
+      final userIds = await fetchParticipants(); // already filters status == 'joined'
+
+      List<String> avatars = [];
+      if (userIds.isNotEmpty) {
+        final avatarRes = await supabase
+            .from('profiles')
+            .select('avatar_url')
+            .filter('id', 'in', userIds);
+
+        avatars = (avatarRes as List)
+            .map((a) => a['avatar_url'] as String)
+            .toList();
+      }
+
+      final joinedRes = await supabase
+          .from('activity_participants')
+          .select('id')
+          .eq('post_id', widget.post.id)
+          .eq('user_id', supabase.auth.currentUser!.id)
+          .maybeSingle();
+
+      if (!mounted) return;
+      setState(() {
+        _participantIds = userIds;
+        _participantAvatars = [
+          ...avatars,
+          ...debugParticipants,
+        ];
+        _joined = joinedRes != null;
+      });
+    } catch (e) {
+      debugPrint('Error refreshing participants: $e');
     }
   }
 
@@ -499,6 +539,8 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     );
 
     if (!mounted) return;
+
+    await _refreshParticipants();
   }
 
   // Snaps the carousel to whichever side (image / map) is closer once a
@@ -750,6 +792,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   void initState() {
     super.initState();
     _carouselShowingImage = widget.showImageMain;
+    _participantIds = List<String>.from(widget.participantIds);
     loadAll();
     // Kick off the map's shimmer-to-reveal window once per card, right
     // away — regardless of whether the map or the image is the main
@@ -904,7 +947,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                               ),
                             );
                           },
-                          child: buildParticipantStack(_participantAvatars, (widget.participantIds.length + debugParticipants.length))
+                          child: buildParticipantStack(_participantAvatars, (_participantIds.length + debugParticipants.length))
                         ),
                         const Spacer(),
                         Row(

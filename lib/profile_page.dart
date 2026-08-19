@@ -154,8 +154,14 @@ class _ProfileContentState extends State<ProfileContent> {
       monthLoading[key] = true;
     });
 
-    final start = DateTime(year, month, 1);
-    final end = DateTime(year, month + 1, 0, 23, 59, 59);
+    final start = DateTime(year, month, 1).toUtc();
+    final endOfMonth = DateTime(year, month + 1, 0, 23, 59, 59).toUtc();
+    final nowUtc = DateTime.now().toUtc();
+
+    // Never query past "now" — a month can be partially in the future
+    // (the current month), and this tab must only ever show activities
+    // that have already happened.
+    final effectiveEnd = endOfMonth.isBefore(nowUtc) ? endOfMonth : nowUtc;
 
     final userId = widget.profileId;
 
@@ -168,7 +174,7 @@ class _ProfileContentState extends State<ProfileContent> {
         .eq('activity_participants.user_id', userId)
         .eq('activity_participants.status', 'joined')
         .gte('starts_at', start.toIso8601String())
-        .lte('starts_at', end.toIso8601String());
+        .lt('starts_at', effectiveEnd.toIso8601String()); // lt, matching the "past" query above
 
     final posts = result.map<Post>((e) {
       return Post(
@@ -343,6 +349,55 @@ class _ProfileContentState extends State<ProfileContent> {
     );
   }
 
+  Widget _buildSoftEmptyState({
+    required IconData icon,
+    required String message,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: EnduvoColors.border,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: EnduvoColors.background,
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: EnduvoColors.muted,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13.5,
+                color: EnduvoColors.muted,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildRunsList(
     List<Post> runs, {
     int? limit,
@@ -351,34 +406,13 @@ class _ProfileContentState extends State<ProfileContent> {
     if (runs.isEmpty) {
       final isJoined = _selectedTab == 0;
 
-      return Padding(
-        padding: const EdgeInsets.all(6),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: EnduvoColors.border,
-            ),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                isJoined
-                    ? "Keiner Aktivität beigetreten"
-                    : "Noch keine Aktivität erstellt",
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: EnduvoColors.text,
-                ),
-              ),
-            ],
-          ),
-        ),
+      return _buildSoftEmptyState(
+        icon: isJoined
+            ? Icons.calendar_today_outlined
+            : Icons.history_rounded,
+        message: isJoined
+            ? "Keiner Aktivität beigetreten"
+            : "Noch keine Aktivität erstellt",
       );
     }
 
@@ -463,8 +497,14 @@ class _ProfileContentState extends State<ProfileContent> {
             _buildRunsList(joinedRuns, limit: _showAllJoined ? null : 2, showMore: joinedRuns.length > 2),
         ] else ...[
           if (grouped.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            // const SizedBox(height: 8),
             _buildPastGrouped(grouped)
+          ] else ...[
+            // const SizedBox(height: 12),
+            _buildSoftEmptyState(
+              icon: Icons.history_rounded,
+              message: "Noch keine vergangenen Aktivitäten",
+            ),
           ],
         ]
       ],
@@ -1211,38 +1251,41 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
 
                             const SizedBox(height: 14),
 
-                            // AGE
-                            _ModernField(
-                              label: "Alter",
-                              controller: ageController,
-                              maxLength: 3,
-                              keyboardType: TextInputType.number,
-                            ),
+                            // // USERNAME + uniqueness check
+                            // _ModernField(
+                            //   label: "Username",
+                            //   controller: usernameController,
+                            //   maxLength: 20,
+                            //   errorText: usernameError,
+                            //   onChanged: (val) async {
+                            //     final available = await checkUsernameAvailable(val);
 
-                            const SizedBox(height: 14),
+                            //     setModalState(() {
+                            //       usernameError = available || val.isEmpty
+                            //           ? null
+                            //           : "Username already taken";
+                            //     });
+                            //   },
+                            // ),
 
-                            // USERNAME + uniqueness check
+                            // USERNAME — locked
                             _ModernField(
                               label: "Username",
                               controller: usernameController,
                               maxLength: 20,
-                              errorText: usernameError,
-                              onChanged: (val) async {
-                                final available = await checkUsernameAvailable(val);
-
-                                setModalState(() {
-                                  usernameError = available || val.isEmpty
-                                      ? null
-                                      : "Username already taken";
-                                });
-                              },
+                              enabled: false,
+                              suffixIcon: const Icon(
+                                Icons.lock_outline,
+                                size: 18,
+                                color: EnduvoColors.muted,
+                              ),
                             ),
 
                             const SizedBox(height: 14),
 
                             // Town
                             _ModernField(
-                              label: "Town",
+                              label: "Stadt",
                               controller: townController,
                               maxLength: 30,
                             ),
@@ -1255,6 +1298,16 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                               controller: bioController,
                               maxLength: 120,
                               maxLines: 3,
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            // AGE
+                            _ModernField(
+                              label: "Alter",
+                              controller: ageController,
+                              maxLength: 3,
+                              keyboardType: TextInputType.number,
                             ),
 
                             const SizedBox(height: 22),
@@ -1284,7 +1337,6 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
 
                                             final updatedProfile = {
                                               "name": nameController.text.trim(),
-                                              "username": usernameController.text.trim(),
                                               "bio": bioController.text.trim(),
                                               "age": int.tryParse(ageController.text.trim()),
                                               "town": townController.text.trim(),
@@ -1293,7 +1345,6 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                                             try {
                                               await supabase.from('profiles').update({
                                                 'full_name': updatedProfile["name"],
-                                                'username': updatedProfile["username"],
                                                 'bio': updatedProfile["bio"],
                                                 'age': updatedProfile["age"],
                                                 'town': updatedProfile["town"],
@@ -1301,7 +1352,6 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
 
                                               setState(() {
                                                 _fullName = updatedProfile["name"].toString();
-                                                _userName = updatedProfile["username"].toString();
                                                 _bio = updatedProfile["bio"].toString();
                                                 _age = int.tryParse(updatedProfile["age"].toString());
                                                 _town = updatedProfile["town"].toString();
@@ -1690,6 +1740,7 @@ class _ModernField extends StatelessWidget {
   final Function(String)? onChanged;
   final Widget? suffixIcon;
   final Color? borderColor;
+  final bool enabled;
 
   const _ModernField({
     required this.label,
@@ -1701,6 +1752,7 @@ class _ModernField extends StatelessWidget {
     this.onChanged,
     this.suffixIcon,
     this.borderColor,
+    this.enabled = true,
   });
 
   @override
@@ -1712,6 +1764,7 @@ class _ModernField extends StatelessWidget {
 
     return TextField(
       controller: controller,
+      enabled: enabled,
       maxLength: maxLength,
       maxLines: maxLines,
       keyboardType: keyboardType,

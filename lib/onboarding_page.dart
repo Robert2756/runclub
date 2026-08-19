@@ -11,7 +11,12 @@ final imageService = ImageService();
 final supabase = Supabase.instance.client;
 
 class OnboardingPage extends StatefulWidget {
-  const OnboardingPage({super.key});
+  final VoidCallback onCompleted;
+
+  const OnboardingPage({
+    super.key,
+    required this.onCompleted
+  });
 
   @override
   State<OnboardingPage> createState() => _OnboardingPageState();
@@ -26,6 +31,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final nameController = TextEditingController();
   final bioController = TextEditingController();
   final townController = TextEditingController();
+  final ageController = TextEditingController();
 
   File? profileImage;
 
@@ -40,6 +46,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     nameController.dispose();
     bioController.dispose();
     townController.dispose();
+    ageController.dispose();
     super.dispose();
   }
 
@@ -66,6 +73,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
         return;
       }
 
+      if (username.contains(' ')) {
+        setState(() {
+          usernameValid = false;
+          error = "Der Username darf keine Leerzeichen enthalten.";
+        });
+        return;
+      }
+
       final available = await checkUsernameAvailable(username);
 
       if (!available) {
@@ -76,7 +91,20 @@ class _OnboardingPageState extends State<OnboardingPage> {
         return;
       }
 
+      final ageText = ageController.text.trim();
+      if (ageText.isNotEmpty) {
+        final age = int.tryParse(ageText);
+
+        if (age == null || age < 0 || age > 100) {
+          setState(() {
+            error = "Bitte gib ein gültiges Alter (0–100) ein.";
+          });
+          return;
+        }
+      }
+
       setState(() {
+        usernameValid = true;
         error = null;
       });
     }
@@ -252,6 +280,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
             .getPublicUrl(path);
       }
 
+      final age = int.tryParse(ageController.text.trim());
+
       await supabase
           .from('profiles')
           .update({
@@ -260,12 +290,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
             'bio': bioController.text.trim(),
             'town': townController.text.trim(),
             if (avatarUrl != null) 'avatar_url': avatarUrl,
+            if (age != null) 'age': age,
             'onboarding_completed': true,
           })
           .eq('id', user.id);
 
       if (!mounted) return;
-      context.go('/main');
+      // context.go('/');
+      widget.onCompleted();
     } catch (e) {
       setState(() {
         error = e.toString();
@@ -494,6 +526,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
           townController,
           Icons.location_on_outlined,
         ),
+        const SizedBox(height: 14),
+        modernField(
+          "Alter",
+          ageController,
+          Icons.cake_outlined,
+          keyboardType: TextInputType.number,
+          maxLength: 3,
+        ),
       ],
     );
   }
@@ -593,12 +633,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
     TextEditingController controller,
     IconData icon, {
     int maxLines = 1,
+    TextInputType? keyboardType,
+    int? maxLength,
   }) {
     return TextField(
       controller: controller,
       maxLines: maxLines,
+      keyboardType: keyboardType,
+      maxLength: maxLength,
       decoration: InputDecoration(
         labelText: label,
+        counterText: maxLength != null ? "" : null,
         prefixIcon: Icon(
           icon,
           color: Colors.black54,

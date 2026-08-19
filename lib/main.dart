@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signin_page.dart';
+import 'signup_page.dart';
 import 'main_page.dart';
 import 'theme/appearance.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -56,7 +57,7 @@ final GoRouter router = GoRouter(
     final user = supabase.auth.currentUser;
 
     final location = state.matchedLocation;
-    final loggingIn = location == '/signin';
+    final loggingIn = location == '/signin' || location == '/signup';
     final checkingEmail = location == '/check-email';
     final resettingPassword = location == '/reset-password';
 
@@ -113,6 +114,7 @@ final GoRouter router = GoRouter(
       },
     ),
     GoRoute(path: '/reset-password', builder: (_, __) => ResetPasswordPage(onRecoveryFinished: () => router.go('/'))),
+    GoRoute(path: '/signup', builder: (_, __) => const SignUpPage()),
     GoRoute(path: '/', builder: (_, __) => const ProfileGate()), // your existing widget, unchanged
   ],
 );
@@ -231,9 +233,22 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
-// initial app location -> /
-class ProfileGate extends StatelessWidget {
+class ProfileGate extends StatefulWidget {
   const ProfileGate({super.key});
+
+  @override
+  State<ProfileGate> createState() => _ProfileGateState();
+}
+
+// initial app location -> /
+class _ProfileGateState extends State<ProfileGate> {
+  late Future<Widget> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _resolve();
+  }
 
   Future<Widget> _resolve() async {
     try {
@@ -265,7 +280,9 @@ class ProfileGate extends StatelessWidget {
       debugPrint("PROFILE GATE: onboarding completed = $done");
       return done
           ? const MainPage()
-          : const OnboardingPage();
+          : OnboardingPage(
+            onCompleted: _onOnboardingCompleted,
+          );
 
     } catch (e, stackTrace) {
       debugPrint("PROFILE GATE ERROR: $e");
@@ -278,10 +295,16 @@ class ProfileGate extends StatelessWidget {
     }
   }
 
+  void _onOnboardingCompleted() {
+    setState(() {
+      _future = _resolve();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Widget>(
-      future: _resolve(),
+      future: _future,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Scaffold(

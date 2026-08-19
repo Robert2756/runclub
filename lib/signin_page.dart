@@ -371,10 +371,9 @@ class _SignInPageState extends State<SignInPage> {
                       style: TextStyle(color: Colors.grey.shade700, fontSize: 14),
                     ),
                     TextButton(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const SignUpPage()),
-                      ),
+                      onPressed: () {
+                        context.go('/signup');
+                      },
                       child: const Text(
                         "Registrieren",
                         style: TextStyle(
