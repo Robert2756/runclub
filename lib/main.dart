@@ -12,6 +12,8 @@ import 'checkEmailPage.dart';
 import 'package:app_links/app_links.dart';
 import 'reset_password_page.dart';
 import 'package:go_router/go_router.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 final supabase = Supabase.instance.client;
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey();
 
@@ -121,6 +123,7 @@ final GoRouter router = GoRouter(
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  tz.initializeTimeZones();
   debugPrint("APP STARTED");
 
   await Supabase.initialize(
@@ -318,20 +321,10 @@ class _ProfileGateState extends State<ProfileGate> {
 }
 
 Future<void> ensureProfileExists(User user) async {
-  final supabase = Supabase.instance.client;
-
-  final profile = await supabase
-      .from('profiles')
-      .select()
-      .eq('id', user.id)
-      .maybeSingle();
-
-  if (profile == null) {
-    await supabase.from('profiles').insert({
-      'id': user.id,
-      'onboarding_completed': false,
-      'avatar_url': "https://wczdhrcvwlghrkjmskaa.supabase.co/storage/v1/object/public/ProfileImages/defaultAvatar.jpeg",
-      'created_at': DateTime.now().toIso8601String(),
-    });
-  }
+  await Supabase.instance.client.from('profiles').upsert({
+    'id': user.id,
+    'onboarding_completed': false,
+    'avatar_url': 'https://wczdhrcvwlghrkjmskaa.supabase.co/storage/v1/object/public/ProfileImages/defaultAvatar.jpeg',
+    'created_at': DateTime.now().toIso8601String(),
+  }, onConflict: 'id', ignoreDuplicates: true);
 }

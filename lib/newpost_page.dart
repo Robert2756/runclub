@@ -1780,18 +1780,19 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
 
   Future<int> checkNumberActivePosts() async {
     try {
+      final nowUtc = DateTime.now().toUtc().toIso8601String();
+
       final response = await supabase
           .from('posts')
-          .select(
-            'creator_id',
-          )
+          .select('creator_id')
           .eq('creator_id', supabase.auth.currentUser!.id)
-          .gt('date', DateTime.now().toIso8601String())
+          .gt('starts_at', nowUtc)
           .count();
 
+      debugPrint("Number active posts: $response");
       return response.count;
     } catch (e) {
-      print("Error fetching active posts count: $e");
+      debugPrint("Error fetching active posts count: $e");
       return 0;
     }
   }

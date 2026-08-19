@@ -21,6 +21,8 @@ import 'package:flutter/rendering.dart';
 import 'activity_share_page.dart';
 import 'package:device_calendar/device_calendar.dart';
 import 'widgets/map_marker.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
 final supabase = Supabase.instance.client;
 
 enum ActivityMode {
@@ -115,6 +117,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   int? unreadCounter;
   Key _chatKey = UniqueKey(); // if key changes -> build ActivityChat new (as it is passed as key)
   Key _detailsKey = UniqueKey();
+  bool _addingToCalendar = false;
+
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/backdrop/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
@@ -830,212 +834,301 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   }
 
   Future<void> _addToCalendar() async {
-    if (post == null || post!.startsAt == null) return;
+    if (post == null || post!.startsAt == null || _addingToCalendar) return;
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 
     final isParticipant = participants.contains(userId);
 
     if (!isParticipant) {
-        final join = await showDialog<bool>(
-          context: context,
-          barrierColor: Colors.black.withOpacity(0.6),
-          builder: (context) {
-            return Dialog(
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Aktivität beitreten',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black,
-                      ),
+      final join = await showDialog<bool>(
+        context: context,
+        barrierColor: Colors.black.withOpacity(0.6),
+        builder: (context) {
+          return Dialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Aktivität beitreten',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black,
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Du musst Teil der Aktivität sein, um sie zum Kalender hinzuzufügen.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        height: 1.3,
-                        color: Colors.black.withOpacity(0.65),
-                      ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Du musst Teil der Aktivität sein, um sie zum Kalender hinzuzufügen.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.3,
+                      color: Colors.black.withOpacity(0.65),
                     ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => Navigator.pop(context, false),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              alignment: Alignment.center,
-                              child: const Text(
-                                'Abbrechen',
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context, false),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text(
+                              'Abbrechen',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            );
-          },
-        );
-        if (join != true) return;
+            ),
+          );
+        },
+      );
+      if (!mounted) return;
+      if (join != true) return;
+    }
+
+    setState(() => _addingToCalendar = true);
+
+    try {
+      final plugin = DeviceCalendarPlugin();
+
+      // --- Permissions ---
+      Result<bool>? permResult;
+      try {
+        permResult = await plugin.requestPermissions();
+      } catch (e) {
+        debugPrint('Calendar permission request failed: $e');
+        if (mounted) {
+          _showCalendarError(
+            'Kalenderzugriff konnte nicht angefragt werden.',
+          );
+        }
+        return;
       }
 
-    final plugin = DeviceCalendarPlugin();
+      if (!mounted) return;
 
-    // request permission
-    var permResult = await plugin.requestPermissions();
-    if (permResult.data != true) return;
-
-    // get calendars and pick the default/first writable one
-    final calendarsResult = await plugin.retrieveCalendars();
-    final calendars = (calendarsResult.data ?? [])
-    .whereType<Calendar>()
-    .toList();
-
-    if (calendars.isEmpty) {
-      return;
-    }
-    final writable = calendars.where((c) => c.isReadOnly != true).toList();
-    final selected = await _pickCalendar(writable.isNotEmpty ? writable : calendars);
-    
-    if (selected == null) return;
-    final calendar = selected;
-
-    // confirm adding to calendar
-    final confirm = await showDialog<bool>(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.6),
-      builder: (context) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Kalender hinzufügen?',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                Text(
-                  'Zu "${calendar.name}" hinzufügen?',
-                  style: TextStyle(
-                    fontSize: 14,
-                    height: 1.3,
-                    color: Colors.black.withOpacity(0.65),
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context, false),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'Abbrechen',
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(width: 10),
-
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context, true),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text(
-                            'Hinzufügen',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+      if (permResult.data != true) {
+        _showCalendarError(
+          'Kein Kalenderzugriff. Bitte erlaube den Zugriff in den Einstellungen.',
         );
-      },
-    );
-    if (confirm != true) return;
+        return;
+      }
 
-    final start = DateTime.parse(post!.startsAt!).toLocal();
-    final end = start.add(const Duration(hours: 1));
+      // --- Retrieve calendars ---
+      final calendarsResult = await plugin.retrieveCalendars();
+      if (!mounted) return;
 
-    final event = Event(
-      calendar.id!,
-      title: post!.title,
-      description: post!.description ?? '',
-      start: TZDateTime.from(start, local),
-      end: TZDateTime.from(end, local),
-      location: post!.town ?? '',
-    );
+      if (calendarsResult.hasErrors || calendarsResult.data == null) {
+        _showCalendarError('Kalender konnten nicht geladen werden.');
+        return;
+      }
 
-    final result = await plugin.createOrUpdateEvent(event);
+      final calendars = calendarsResult.data!.whereType<Calendar>().toList();
 
-    if (mounted && result?.data != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Zum Kalender hinzugefügt ✓')),
+      if (calendars.isEmpty) {
+        _showCalendarError('Kein Kalender auf diesem Gerät gefunden.');
+        return;
+      }
+
+      final writable = calendars.where((c) => c.isReadOnly != true).toList();
+
+      if (writable.isEmpty) {
+        _showCalendarError(
+          'Kein beschreibbarer Kalender gefunden. Bitte erstelle zuerst einen eigenen Kalender.',
+        );
+        return;
+      }
+
+      final selected = await _pickCalendar(writable);
+      if (!mounted) return;
+      if (selected == null) return;
+
+      final calendar = selected;
+      if (calendar.id == null) {
+        _showCalendarError('Ungültiger Kalender ausgewählt.');
+        return;
+      }
+
+      // --- Confirm ---
+      final confirm = await showDialog<bool>(
+        context: context,
+        barrierColor: Colors.black.withOpacity(0.6),
+        builder: (context) {
+          return Dialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Kalender hinzufügen?',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Zu "${calendar.name}" hinzufügen?',
+                    style: TextStyle(
+                      fontSize: 14,
+                      height: 1.3,
+                      color: Colors.black.withOpacity(0.65),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context, false),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text(
+                              'Abbrechen',
+                              style: TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context, true),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.black,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text(
+                              'Hinzufügen',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       );
+
+      if (!mounted) return;
+      if (confirm != true) return;
+
+      // --- Build + create event ---
+      DateTime start;
+      try {
+        start = DateTime.parse(post!.startsAt!).toLocal();
+      } catch (e) {
+        debugPrint('Failed to parse startsAt: $e');
+        _showCalendarError('Ungültiges Aktivitätsdatum.');
+        return;
+      }
+      final end = start.add(const Duration(hours: 1));
+
+      tz.TZDateTime tzStart;
+      tz.TZDateTime tzEnd;
+      try {
+        tzStart = tz.TZDateTime.from(start, tz.local);
+        tzEnd = tz.TZDateTime.from(end, tz.local);
+      } catch (e) {
+        // Falls back to UTC if local zone data isn't available for
+        // some reason, rather than crashing the whole flow.
+        debugPrint('Timezone conversion failed, falling back to UTC: $e');
+        tzStart = tz.TZDateTime.from(start.toUtc(), tz.UTC);
+        tzEnd = tz.TZDateTime.from(end.toUtc(), tz.UTC);
+      }
+
+      final event = Event(
+        calendar.id!,
+        title: post!.title,
+        description: post!.description ?? '',
+        start: tzStart,
+        end: tzEnd,
+        location: post!.town ?? '',
+      );
+
+      Result<String>? result;
+      try {
+        result = await plugin.createOrUpdateEvent(event);
+      } catch (e) {
+        debugPrint('createOrUpdateEvent threw: $e');
+        if (mounted) _showCalendarError('Ereignis konnte nicht erstellt werden.');
+        return;
+      }
+
+      if (!mounted) return;
+
+      if (result != null && result.isSuccess && result.data != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Zum Kalender hinzugefügt ✓')),
+        );
+        // Optional: persist result.data (the platform event id) somewhere
+        // tied to (post.id, userId) so a repeat tap can call
+        // createOrUpdateEvent with that id set and UPDATE instead of
+        // creating a duplicate event.
+      } else {
+        _showCalendarError('Ereignis konnte nicht zum Kalender hinzugefügt werden.');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Unexpected error in _addToCalendar: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) _showCalendarError('Etwas ist schiefgelaufen.');
+    } finally {
+      if (mounted) setState(() => _addingToCalendar = false);
     }
+  }
+
+  void _showCalendarError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Widget _buildMap({double initialZoom = 13, bool showMarker = true}) {
@@ -1635,26 +1728,30 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     final userId = supabase.auth.currentUser!.id;
 
     try {
-      await supabase
-          .from('activity_participants')
-          .update({
-            'reported': true,
-            'report_reason': reason?.isEmpty == true ? null : reason,
-            'reported_at': DateTime.now().toIso8601String(),
-          })
-          .eq('post_id', post!.id)
-          .eq('user_id', userId);
+      await supabase.from('activity_reports').insert({
+        'post_id': post!.id,
+        'reporter_id': userId,
+        'reason': reason?.isEmpty == true ? null : reason,
+      });
 
-      // optional: feedback UI
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Gemeldet ✓")),
         );
       }
+    } on PostgrestException catch (e) {
+      // unique violation → already reported by this user
+      if (e.code == '23505') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Du hast diese Aktivität bereits gemeldet")),
+          );
+        }
+        return;
+      }
+      debugPrint("Report failed: $e");
     } catch (e) {
       debugPrint("Report failed: $e");
-
-      // kein Crash → still fallback
     }
   }
 
@@ -1879,15 +1976,21 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                 ),
 
                 GestureDetector(
-                  onTap: () => _addToCalendar(),
-                  child: Text(
-                    "Kalender hinzufügen",
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: const Color.fromARGB(255, 179, 179, 179),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+                  onTap: _addingToCalendar ? null : () => _addToCalendar(),
+                  child: _addingToCalendar
+                      ? const SizedBox(
+                          width: 13,
+                          height: 13,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(
+                          "Kalender hinzufügen",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: const Color.fromARGB(255, 179, 179, 179),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                 ),
               ],
             ),

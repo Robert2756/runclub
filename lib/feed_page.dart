@@ -375,7 +375,7 @@ class FeedPageState extends State<FeedPage> {
     final distance = Distance();
     final now = DateTime.now();
 
-    const double d0 = 15000; // point where score has fallen to about 37% of its original value
+    const double d0 = 30000; // point where score has fallen to about 37% of its original value
     const double t0 = 168;   // hours until event
     const double f0 = 168;    // hours for freshness
 
@@ -415,8 +415,8 @@ class FeedPageState extends State<FeedPage> {
       }
 
       post['score'] =
-        0.55 * timeScore +
-        0.45 * distanceScore;
+        0.4 * timeScore +
+        0.6 * distanceScore;
         // 0.10 * freshnessScore;
     }
     candidatePool.sort((a, b) => b['score'].compareTo(a['score']));

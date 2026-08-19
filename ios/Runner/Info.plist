@@ -67,7 +67,7 @@
 			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
 		<key>NSCalendarsUsageDescription</key>
-		<string>We need access to add this activity to your calendar.</string>
+		<string>Wir benötigen Zugriff auf deinen Kalender, um Aktivitäten hinzuzufügen.</string>
 		<key>UIStatusBarHidden</key>
 		<false/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
