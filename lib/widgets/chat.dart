@@ -86,7 +86,7 @@ class ActivityChat extends StatefulWidget {
   State<ActivityChat> createState() => _ActivityChatState();
 }
 
-class _ActivityChatState extends State<ActivityChat> {
+class _ActivityChatState extends State<ActivityChat> with WidgetsBindingObserver{
   final List<Message> _messages = [];
   final TextEditingController _inputController = TextEditingController();
 
@@ -99,11 +99,16 @@ class _ActivityChatState extends State<ActivityChat> {
   bool _hasMore = true;
   bool _loadingJoin = false;
 
+  bool _appInForeground = true;
+  bool _marking = false;
+  Timer? _markReadDebounce;
+
   static const int _pageSize = 30;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _joined = widget.initialJoined;
     _requested = widget.initialRequested;
     _bootstrap();
@@ -111,9 +116,49 @@ class _ActivityChatState extends State<ActivityChat> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _markReadDebounce?.cancel();
+    if (_joined && !_requested) {
+      _markAsRead(); // fire-and-forget: persist any pending read state before unmounting
+    }
     _channel?.unsubscribe();
     _inputController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appInForeground = state == AppLifecycleState.resumed;
+    if (!_appInForeground && widget.isActive) {
+      // Leaving the foreground while this chat is open: flush any
+      // pending debounce and persist the read state right away.
+      _markReadDebounce?.cancel();
+      _markAsRead();
+    }
+  }
+
+  /// Single, guarded writer for last_read_at.
+  Future<void> _markAsRead() async {
+    if (!_joined || _requested || _marking) return;
+    _marking = true;
+    try {
+      await supabase
+          .from('activity_participants')
+          .update({'last_read_at': DateTime.now().toIso8601String()})
+          .eq('post_id', widget.post!.id)
+          .eq('user_id', supabase.auth.currentUser!.id);
+      widget.onActiveRead?.call();
+    } catch (e) {
+      debugPrint('Failed to mark chat as read: $e');
+    } finally {
+      _marking = false;
+    }
+  }
+
+  /// Coalesces bursts of incoming messages into a single write.
+  void _scheduleMarkAsRead() {
+    _markReadDebounce?.cancel();
+    _markReadDebounce = Timer(const Duration(milliseconds: 400), _markAsRead);
   }
 
   Future<void> _bootstrap() async {
@@ -237,15 +282,11 @@ class _ActivityChatState extends State<ActivityChat> {
           }
         });
 
-        // Mark as read immediately since the user is actively viewing the chat
-        if (widget.isActive && msg.userId != supabase.auth.currentUser!.id) {
-          debugPrint("Update last read");
-          await supabase
-              .from('activity_participants')
-              .update({'last_read_at': DateTime.now().toIso8601String()})
-              .eq('post_id', widget.post!.id)
-              .eq('user_id', supabase.auth.currentUser!.id);
-        }
+        if (widget.isActive &&
+              _appInForeground &&
+              msg.userId != supabase.auth.currentUser!.id) {
+            _scheduleMarkAsRead();
+          }
 
       },
     ).subscribe((status, [error]) {

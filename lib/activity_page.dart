@@ -119,12 +119,51 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   Key _detailsKey = UniqueKey();
   bool _addingToCalendar = false;
 
+  RealtimeChannel? _messagesChannel;
+  bool _viewingChat = false; // true while ActivityChatPage is pushed on top
+
 
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/backdrop/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+
+  void _subscribeToMessages() {
+    if (!_joined || _requested) return;
+    if (_messagesChannel != null) return;
+
+    _messagesChannel = supabase.channel('activity-badge-${post!.id}');
+    _messagesChannel!.onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'activity_messages',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'activity_id',
+        value: post!.id,
+      ),
+      callback: (payload) {
+        final senderId = payload.newRecord['user_id'];
+        if (senderId == supabase.auth.currentUser!.id) return;
+
+        // ActivityChat is open and already marking these as read itself.
+        if (_viewingChat) return;
+
+        if (!mounted) return;
+        setState(() {
+          unreadCounter = (unreadCounter ?? 0) + 1;
+        });
+      },
+    ).subscribe((status, [error]) {
+      debugPrint('Badge realtime status: $status, error: $error');
+    });
+  }
+
+  void _unsubscribeFromMessages() {
+    _messagesChannel?.unsubscribe();
+    _messagesChannel = null;
+  }
 
   Future<void> loadActivity() async {
     final response = await supabase
@@ -216,9 +255,10 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
     // count unread messages from user for this activity
     await _calculateUnread();
+    _subscribeToMessages();
   }
 
-  Future<void> _reloadJoinState() async {
+  Future<void> _reloadJoinState({bool recalcUnread = true}) async {
     final userId = supabase.auth.currentUser!.id;
 
     final res = await supabase
@@ -235,7 +275,16 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       _requested = status == "requested";
     });
 
-    await _calculateUnread();
+    // cover the case where the user joins from the chat page
+    if (_joined) {
+      _subscribeToMessages();
+    } else {
+      _unsubscribeFromMessages();
+    }
+
+    if (recalcUnread) {
+      await _calculateUnread();
+    }
   }
 
   DateTime? parseDate(dynamic value) {
@@ -518,6 +567,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
           });
           await _calculateUnread();
           fetchParticipantAvatars();
+          _subscribeToMessages();
         } else if (post!.joinMode == "Request") {
           // activity join mode "Request"
           await supabase.from('activity_participants').insert({
@@ -554,6 +604,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
         });
         await _calculateUnread();
         fetchParticipantAvatars();
+        _unsubscribeFromMessages();
       }
     } catch (e) {
       debugPrint('Error toggling join: $e');
@@ -740,6 +791,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    _unsubscribeFromMessages();
     super.dispose();
   }
 
@@ -1456,6 +1508,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
         if (goingToChat) {
           if (_joined) await markChatAsRead();
+          setState(() => _viewingChat = true); // ← add
 
           final result = await Navigator.push(
             context,
@@ -1469,9 +1522,14 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
             ),
           );
 
+          // returning from chat page
           if (mounted) {
-            await _reloadJoinState();
-          }
+              setState(() {
+                _viewingChat = false;
+                if (_joined) unreadCounter = 0; // optimistic — chat was open, everything's read
+              });
+              await _reloadJoinState(recalcUnread: false); // just resync join/request status, not the count
+            }
 
           return; // IMPORTANT: stop mode switching
         }

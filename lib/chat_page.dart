@@ -20,7 +20,7 @@ class ActivityChatPage extends StatefulWidget {
   State<ActivityChatPage> createState() => ActivityChatPageState();
 }
 
-class ActivityChatPageState extends State<ActivityChatPage> {
+class ActivityChatPageState extends State<ActivityChatPage>{
   late bool _joined;
   late bool _requested;
 
@@ -29,6 +29,11 @@ class ActivityChatPageState extends State<ActivityChatPage> {
     super.initState();
     _joined = widget.initialJoined;
     _requested = widget.initialRequested;
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   Widget _buildBackButton(BuildContext context) {
