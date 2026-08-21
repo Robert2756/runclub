@@ -144,6 +144,7 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     setState(() {
       loadStatesAccepts[key] = true;
     });
+    debugPrint("Update join state");
     // accept request
     try {
       await supabase

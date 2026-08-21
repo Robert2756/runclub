@@ -745,39 +745,14 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     try {
       if (confirmed != true) return;
 
-      // delete messages
-      await supabase
-          .from('activity_messages')
-          .delete()
-          .eq('activity_id', post!.id);
-
-      // delete participants
-      await supabase
-          .from('activity_participants')
-          .delete()
-          .eq('post_id', post!.id);
-      
-      // delete post notifications
-      await supabase
-        .from('notifications')
-        .delete()
-        .eq('post_id', post!.id);
-
-      // delete post image
       final imageUrl = post!.imgurl;
+        if (imageUrl != null) {
+          final path = Uri.parse(imageUrl).pathSegments.last;
+          await supabase.storage.from('PostImages').remove([path]);
+        }
 
-      if (imageUrl != null) {
-        final uri = Uri.parse(imageUrl);
-
-        final path = uri.pathSegments.last;
-
-        await supabase.storage
-            .from('PostImages')
-            .remove([path]);
-      }
-
-      // delete db post row
-      await supabase.from('posts').delete().eq('id', post!.id);
+        await supabase.from('posts').delete().eq('id', post!.id);
+        // messages, participants, notifications, reports all vanish automatically since in db foreign key set to on delete cascade
 
       if (mounted) {
         Navigator.pop(context, true);
