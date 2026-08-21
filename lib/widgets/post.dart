@@ -871,7 +871,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                                   ? (widget.post.userdistance! >= 1000
                                       ? "$bullet${(widget.post.userdistance! / 1000).round()}\u00A0km entfernt"
                                       : "$bullet${widget.post.userdistance!.round()}\u00A0m entfernt")
-                                  : "$bullet none"),
+                                  : ""),
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey[700],

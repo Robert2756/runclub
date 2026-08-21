@@ -207,8 +207,10 @@ class FeedPageState extends State<FeedPage> {
 
     final asked = await LocationPrefs.wasAsked();
     if (!asked) {
-      // First launch ever — show our own rationale, then decide.
-      await _runFirstTimeLocationFlow();
+      // First launch ever — skip the extra rationale dialog,
+      // go straight to the picker (it already offers GPS or manual).
+      await LocationPrefs.markAsked();
+      if (mounted) await _openLocationPicker();
     } else {
       // Already asked previously. Try a SILENT lookup only — no dialogs.
       final cached = await tryGetDeviceLocation(preferCached: true);
@@ -223,35 +225,6 @@ class FeedPageState extends State<FeedPage> {
     }
 
     await fetchCandidates();
-  }
-
-  Future<void> _runFirstTimeLocationFlow() async {
-    await LocationPrefs.markAsked();
-    if (!mounted) return;
-
-    final wantsGps = await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => const LocationPrimerDialog(),
-        ) ??
-        false;
-
-    if (!wantsGps) {
-      await _openLocationPicker();
-      return;
-    }
-
-    final position = await tryGetDeviceLocation(preferCached: false);
-    if (position != null) {
-      _applyLocation(
-        lat: position.latitude, lon: position.longitude,
-        label: 'Standort', source: LocationSource.gps,
-      );
-      unawaited(_resolveAndSaveLabel(position.latitude, position.longitude));
-    } else if (mounted) {
-      // Permission denied or service disabled -> fall back to manual picker.
-      await _openLocationPicker();
-    }
   }
 
   void _applyLocation({

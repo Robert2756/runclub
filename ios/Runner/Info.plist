@@ -81,5 +81,7 @@
 				</array>
 			</dict>
 		</array>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>Mit deinem Standort zeigen wir dir Aktivitäten in deiner Nähe.</string>
 	</dict>
 </plist>

@@ -62,7 +62,19 @@ class LocationPrefs {
   static const _kLon = 'user_location_lon';
   static const _kName = 'user_location_name';
   static const _kSource = 'user_location_source';
-  static const _kAsked = 'user_location_asked'; // NEW
+  static const _kAsked = 'user_location_asked';
+  static const _kDeniedForever = 'user_location_denied_forever';
+
+  // remembering the last answer it got from checkPermission()
+  static Future<void> setDeniedForever(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kDeniedForever, value);
+  }
+
+  static Future<bool> wasDeniedForever() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_kDeniedForever) ?? false;
+  }
 
   static Future<void> markAsked() async {
     final prefs = await SharedPreferences.getInstance();
@@ -271,7 +283,7 @@ class LocationPickerSheet extends StatefulWidget {
   State<LocationPickerSheet> createState() => _LocationPickerSheetState();
 }
 
-class _LocationPickerSheetState extends State<LocationPickerSheet> {
+class _LocationPickerSheetState extends State<LocationPickerSheet> with WidgetsBindingObserver{
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   Timer? _debounce;
@@ -279,10 +291,46 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
   bool _searching = false;
   bool _gpsLoading = false;
   String? _error;
+  bool _deniedForever = false;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _deniedForever) {
+      _recheckPermissionAfterSettings();
+    }
+  }
+
+  Future<void> _recheckPermissionAfterSettings() async {
+    final permission = await Geolocator.checkPermission();
+    final stillBlocked = permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever;
+
+    if (!stillBlocked) {
+      await LocationPrefs.setDeniedForever(false);
+      if (mounted) {
+        setState(() {
+          _deniedForever = false;
+          _error = null;
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    LocationPrefs.wasDeniedForever().then((v) {
+      if (mounted && v) {
+        setState(() {
+          _deniedForever = v;
+          _error = 'Standortzugriff dauerhaft verweigert.';
+        });
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusNode.requestFocus();
+    });
     // Autofocus feels natural for a search sheet.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
@@ -291,6 +339,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _debounce?.cancel();
     _controller.dispose();
     _focusNode.dispose();
@@ -335,14 +384,34 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.deniedForever) {
+        await LocationPrefs.setDeniedForever(true);
+        setState(() {
+          _gpsLoading = false;
+          _deniedForever = true;
+          _error = 'Standortzugriff dauerhaft verweigert.';
+        });
+        return;
+      }
+      if (permission == LocationPermission.denied) {
         setState(() {
           _gpsLoading = false;
           _error = 'Standortzugriff wurde verweigert.';
         });
         return;
       }
+
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _gpsLoading = false;
+          _error = 'Standortdienste sind deaktiviert.';
+        });
+        return;
+      }
+
+      // permission is granted from here on — clear any stale flag
+      await LocationPrefs.setDeniedForever(false);
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
@@ -510,10 +579,71 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                       )
                     else if (_error != null)
                       Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(color: Colors.redAccent),
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: EnduvoColors.background,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: EnduvoColors.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    _deniedForever
+                                        ? Icons.location_disabled_rounded
+                                        : Icons.error_outline_rounded,
+                                    size: 18,
+                                    color: const Color.fromARGB(255, 0, 0, 0),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      _error!,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: EnduvoColors.text,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (_deniedForever) ...[
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: () => Geolocator.openAppSettings(),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.black,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      shadowColor: Colors.transparent,
+                                      padding: const EdgeInsets.symmetric(vertical: 13),
+                                      minimumSize: const Size(0, 0),
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Einstellungen öffnen',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                       )
                     else

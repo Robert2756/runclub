@@ -104,6 +104,7 @@ class _ActivityChatState extends State<ActivityChat> with WidgetsBindingObserver
   Timer? _markReadDebounce;
 
   static const int _pageSize = 30;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -111,11 +112,22 @@ class _ActivityChatState extends State<ActivityChat> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     _joined = widget.initialJoined;
     _requested = widget.initialRequested;
+    _scrollController.addListener(_onScroll);
     _bootstrap();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final threshold = 300.0; // px from the end before triggering
+    if (_scrollController.position.maxScrollExtent - _scrollController.position.pixels <= threshold) {
+      _loadMore();
+    }
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _markReadDebounce?.cancel();
     if (_joined && !_requested) {
@@ -220,6 +232,10 @@ class _ActivityChatState extends State<ActivityChat> with WidgetsBindingObserver
 
     final newMessages =
         (res as List).map((e) => Message.fromJson(e)).toList();
+
+    // fetch new profile images
+    final userIds = newMessages.map((m) => m.userId).toList();
+    await _fetchProfiles(userIds);
 
     setState(() {
       _messages.addAll(newMessages);
@@ -492,7 +508,7 @@ class _ActivityChatState extends State<ActivityChat> with WidgetsBindingObserver
 
         Expanded(
           child: ListView.builder(
-            // physics: const ClampingScrollPhysics(),
+            controller: _scrollController,
             physics: const ClampingScrollPhysics(),
             reverse: true,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
