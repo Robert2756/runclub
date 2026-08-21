@@ -15,6 +15,7 @@ final FocusNode descriptionFocus = FocusNode();
 final FocusNode titleFocus = FocusNode();
 final FocusNode locationFocus = FocusNode();
 final FocusNode meetingPointFocus = FocusNode();
+int postLimit = 2;
 
 class EnduvoColors {
   static const navy = Color(0xFF0A2647);
@@ -313,7 +314,7 @@ class _BasicSection extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    "Du hast bereits 2 aktive Aktivitäten. Erstelle eine neue, sobald eine beendet ist.",
+                    "Du hast bereits $postLimit aktive Aktivitäten. Erstelle eine neue, sobald eine beendet ist.",
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
@@ -1118,7 +1119,7 @@ class _SettingsSection extends StatelessWidget {
               ? "Jeder kann sofort beitreten"
               : joinMode == JoinMode.request
                   ? "Beitritt nur auf Anfrage möglich"
-                  : "Nur eingeladene Leute können beitreten",
+                  : "Nur eingeladene Leute können beitreten. Die Aktivität erscheint nicht im Feed.",
         ),
       ],
     );
@@ -1797,13 +1798,34 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
     }
   }
 
+  Future<int> _fetchPostLimit() async {
+    try {
+      final limit = await supabase.rpc(
+        'get_active_post_limit',
+        params: {'p_user_id': supabase.auth.currentUser!.id},
+      );
+      debugPrint("Post limit: $limit");
+      return (limit as int?) ?? 2; // fallback to free tier default
+    } catch (e) {
+      debugPrint("Error fetching post limit: $e");
+      return 2;
+    }
+  }
+
   Future<void> _loadLimit() async {
-    final numberActivePosts = await checkNumberActivePosts();
+    final results = await Future.wait([
+      checkNumberActivePosts(),
+      _fetchPostLimit(),
+    ]);
+
+    final numberActivePosts = results[0];
+    final limit = results[1];
 
     if (!mounted) return;
 
     setState(() {
-      isBlockedByLimit = numberActivePosts >= 2;
+      postLimit = limit;
+      isBlockedByLimit = numberActivePosts >= limit;
       isLimitLoading = false;
     });
   }

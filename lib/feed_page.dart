@@ -338,6 +338,7 @@ class FeedPageState extends State<FeedPage> {
             .from('posts')
             .select()
             .gte('starts_at', DateTime.now().toUtc().toIso8601String())
+            .neq('join_mode', 'Invite')
             .order('created_at', ascending: false)
             .range(_dbOffset, _dbOffset + fetch_size - 1);
 
@@ -390,6 +391,7 @@ class FeedPageState extends State<FeedPage> {
             .gte('longitude', minLon)
             .lte('longitude', maxLon)
             .gte('starts_at', DateTime.now().toUtc().toIso8601String())
+            .neq('join_mode', 'Invite')
             .limit(fetch_size);
 
         // filter seen posts out

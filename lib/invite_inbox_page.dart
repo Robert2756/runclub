@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'activity_page.dart';
 import 'profile_page.dart';
 import 'services/data_formatter.dart';
+import 'dart:async';
 
 final supabase = Supabase.instance.client;
 final dataFormatter = DataFormatter();
@@ -35,11 +36,55 @@ class _InviteInboxSheetState extends State<InviteInboxSheet>
     'join',
   ];
   bool _showFilters = false;
+  RealtimeChannel? _chatMessagesChannel;
+  Timer? _fetchDebounce;
 
   @override
   void initState() {
     super.initState();
     fetchNotifications();
+    _subscribeToChatMessages();
+  }
+
+  @override
+  void dispose() {
+    _unsubscribeFromChatMessages();
+    _fetchDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _subscribeToChatMessages() {
+    final userId = supabase.auth.currentUser!.id;
+
+    _chatMessagesChannel = supabase.channel('inbox-chat-$userId');
+    _chatMessagesChannel!
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'activity_messages',
+          callback: (payload) {
+            debugPrint('>>> RAW payload received: ${payload.newRecord}');
+            final senderId = payload.newRecord['user_id'];
+            if (senderId == userId) return; // ignore own messages
+
+            _debouncedFetch();
+          },
+        )
+        .subscribe((status, [error]) {
+          debugPrint('Inbox chat realtime status: $status, error: $error');
+        });
+  }
+
+  void _unsubscribeFromChatMessages() {
+    _chatMessagesChannel?.unsubscribe();
+    _chatMessagesChannel = null;
+  }
+
+  void _debouncedFetch() {
+    _fetchDebounce?.cancel();
+    _fetchDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) fetchNotifications();
+    });
   }
 
   Future<void> fetchNotifications() async {

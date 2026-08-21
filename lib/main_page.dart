@@ -53,11 +53,21 @@ class _MainPageState extends State<MainPage> with WidgetsBindingObserver {
           },
         )
 
-        // chat messages
+        // chat messages (participant status changes)
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'activity_participants',
+          callback: (_) {
+            fetchNotificationCount();
+          },
+        )
+
+        // chat messages (new messages)
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'activity_messages',
           callback: (_) {
             fetchNotificationCount();
           },

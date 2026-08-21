@@ -544,7 +544,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       final userId = supabase.auth.currentUser!.id;
 
       if (!_joined && !_requested) {
-        if (post!.joinMode == "Instant") {
+        if (post!.joinMode == "Instant" || post!.joinMode == "Invite") {
           // activity join mode "Instant"
           await supabase.from('activity_participants').insert({
             'post_id': post!.id,
@@ -1260,6 +1260,65 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     }
   }
 
+  Widget _buildInviteOnlyBadge() {
+    if (post!.joinMode != "Invite") return const SizedBox.shrink();
+
+    final isOwner = post!.creatorId == supabase.auth.currentUser?.id;
+
+    final icon = isOwner ? Icons.mail_outline_rounded : Icons.notifications_none_rounded;
+    final label = isOwner
+        ? "Nicht im Feed sichtbar – Lade Leute über ihr Profil ein"
+        : "Nicht im Feed sichtbar - Du wurdest eingeladen";
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: EnduvoColors.deepBlue.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: EnduvoColors.deepBlue.withOpacity(0.12),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: EnduvoColors.deepBlue.withOpacity(0.09),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 11,
+                color: EnduvoColors.deepBlue.withOpacity(0.85),
+              ),
+            ),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: EnduvoColors.deepBlue.withOpacity(0.85),
+                  letterSpacing: 0.05,
+                  height: 1.1,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLocationCard() {
     final locked = !_canSeeExactLocation;
 
@@ -1803,6 +1862,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
           _sheetHandle(),
           _modeSwitch(),
           const SizedBox(height: 8),
+          _buildInviteOnlyBadge(),
           Expanded(
             child: Stack(
               children: [
@@ -1890,7 +1950,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                                     ),
                                   )
                                 : Text(
-                                    (post!.joinMode == "Instant")
+                                    (post!.joinMode == "Instant" || post!.joinMode == "Invite")
                                       ? _joined 
                                         ? "Beigetreten"
                                         : "Beitreten"

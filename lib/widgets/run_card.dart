@@ -12,12 +12,14 @@ class RunCard extends StatefulWidget {
   final Post post;
   final int? participantCount;
   final VoidCallback onTap;
+  final bool locked;
 
   const RunCard({
     super.key,
     required this.post,
     required this.onTap,
     this.participantCount,
+    this.locked = false,
   });
 
   @override
@@ -32,6 +34,31 @@ class _RunCardState extends State<RunCard> {
   bool get isPast {
     final dt = DateTime.tryParse("${widget.post.date} ${post.time}") ?? DateTime.now();
     return dt.isBefore(DateTime.now());
+  }
+
+  Widget _lockedChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.lock_outline_rounded, size: 10, color: Colors.grey[700]),
+          const SizedBox(width: 3),
+          Text(
+            "Privat",
+            style: TextStyle(
+              fontSize: 10,
+              color: Colors.grey[700],
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -52,47 +79,59 @@ class _RunCardState extends State<RunCard> {
           child: Row(
             children: [
               // 🧭 VISUAL ANCHOR (image or map)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: SizedBox(
-                width: 64,
-                height: 64,
-                child: post.imgurl != null && post.imgurl!.isNotEmpty
-                    ? Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.network(
-                            post.imgurl!,
-                            fit: BoxFit.cover,
-
-                            loadingBuilder: (context, child, progress) {
-                              final isLoading = progress != null;
-
-                              return Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  child,
-
-                                  if (isLoading)
-                                    Shimmer.fromColors(
-                                      baseColor: Colors.grey.shade300,
-                                      highlightColor: Colors.grey.shade100,
-                                      child: Container(color: Colors.grey.shade300),
-                                    ),
-                                ],
-                              );
-                            },
-
-                            errorBuilder: (_, __, ___) => Container(
-                              color: Colors.grey.shade200,
-                              child: const Icon(Icons.image_not_supported_outlined),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      post.imgurl != null && post.imgurl!.isNotEmpty
+                          ? Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Image.network(
+                                  post.imgurl!,
+                                  fit: BoxFit.cover,
+                                  loadingBuilder: (context, child, progress) {
+                                    final isLoading = progress != null;
+                                    return Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        child,
+                                        if (isLoading)
+                                          Shimmer.fromColors(
+                                            baseColor: Colors.grey.shade300,
+                                            highlightColor: Colors.grey.shade100,
+                                            child: Container(color: Colors.grey.shade300),
+                                          ),
+                                      ],
+                                    );
+                                  },
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: Colors.grey.shade200,
+                                    child: const Icon(Icons.image_not_supported_outlined),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : _buildMiniMap(),
+                      if (widget.locked)
+                        Container(
+                          color: Colors.black.withOpacity(0.4),
+                          child: const Center(
+                            child: Icon(
+                              Icons.lock_outline_rounded,
+                              color: Colors.white,
+                              size: 20,
                             ),
                           ),
-                        ],
-                      )
-                    : _buildMiniMap(),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-            ),
 
               const SizedBox(width: 12),
 
@@ -133,7 +172,9 @@ class _RunCardState extends State<RunCard> {
 
                         const Spacer(),
 
-                        if (post.creatorId == supabase.auth.currentUser!.id)
+                        if (widget.locked)
+                          _lockedChip()
+                        else if (post.creatorId == supabase.auth.currentUser!.id)
                           _statusChip(),
                       ],
                     ),

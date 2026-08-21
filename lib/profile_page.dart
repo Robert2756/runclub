@@ -62,6 +62,7 @@ class _ProfileContentState extends State<ProfileContent> {
   bool _loadingCreatedMeta = false;
   bool _showAllJoined = false;
   // bool _showAllMonths = false;
+  Set<String> _viewerJoinedPostIds = {};
 
   @override
   void initState() {
@@ -109,7 +110,8 @@ class _ProfileContentState extends State<ProfileContent> {
           longitude: postData['longitude'],
           town: postData['town'],
           createdAt: postData['created_at'],
-          startsAt: postData['starts_at']
+          startsAt: postData['starts_at'],
+          joinMode: postData['join_mode'],
         );
       }).toList();
 
@@ -138,11 +140,46 @@ class _ProfileContentState extends State<ProfileContent> {
         joinedRuns = joinedUpcomingPostsSorted;
         grouped = groupedCollect;
       });
+
+      await _fetchViewerJoinStatus(
+        joinedUpcomingPostsSorted.map((p) => p.id).toList(),
+      );
     } catch (e) {
       debugPrint("fetchRuns error: $e");
     } finally {
       setState(() => _loadingRuns = false);
     }
+  }
+
+  Future<void> _fetchViewerJoinStatus(List<String> postIds) async {
+    if (postIds.isEmpty) return;
+
+    final viewerId = supabase.auth.currentUser?.id;
+    if (viewerId == null) return;
+
+    final res = await supabase
+        .from('activity_participants')
+        .select('post_id')
+        .eq('user_id', viewerId)
+        .eq('status', 'joined')
+        .filter('post_id', 'in', postIds);
+
+    final joinedIds =
+        (res as List).map((e) => e['post_id'].toString()).toSet();
+
+    if (!mounted) return;
+    setState(() {
+      _viewerJoinedPostIds.addAll(joinedIds);
+    });
+  }
+
+  bool _isLockedForViewer(Post post) {
+    if (post.joinMode != "Invite") return false;
+
+    final viewerId = supabase.auth.currentUser?.id;
+    if (viewerId != null && post.creatorId == viewerId) return false;
+
+    return !_viewerJoinedPostIds.contains(post.id);
   }
 
   Future<void> _loadMonth(int year, int month) async {
@@ -201,6 +238,8 @@ class _ProfileContentState extends State<ProfileContent> {
       monthLoaded[key] = true;
       monthLoading[key] = false;
     });
+
+    await _fetchViewerJoinStatus(posts.map((p) => p.id).toList());
   }
 
   Widget _buildTopToggle() {
@@ -398,6 +437,62 @@ class _ProfileContentState extends State<ProfileContent> {
     );
   }
 
+  void _showInviteOnlyMessage() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.6),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Nur auf Einladung',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Diese Aktivität ist privat. Nur eingeladene Personen können sie sehen.',
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.3,
+                    color: Colors.black.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.black,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'Verstanden',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildRunsList(
     List<Post> runs, {
     int? limit,
@@ -427,13 +522,17 @@ class _ProfileContentState extends State<ProfileContent> {
           itemBuilder: (context, index) {
             final post = displayRuns[index];
             final isLast = index == runs.length - 1;
+            final locked = _isLockedForViewer(post);
 
             return Padding(
               padding: EdgeInsets.only(bottom: isLast ? 6 : 0),
               child: RunCard(
                 post: post,
                 participantCount: null,
-                onTap: () {
+                locked: locked,
+                onTap: locked
+                ? _showInviteOnlyMessage
+                : () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(

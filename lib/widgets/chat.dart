@@ -353,7 +353,7 @@ class _ActivityChatState extends State<ActivityChat> with WidgetsBindingObserver
     try {
       final userId = supabase.auth.currentUser!.id;
 
-      if (widget.joinMode == "Instant") {
+      if (widget.joinMode == "Instant" || widget.joinMode == "Invite") {
         // activity join mode "Instant"
         await supabase.from('activity_participants').insert({
           'post_id': widget.post!.id,
@@ -423,7 +423,7 @@ class _ActivityChatState extends State<ActivityChat> with WidgetsBindingObserver
 
 
             Text(
-              (widget.joinMode == "Instant")
+              (widget.joinMode == "Instant"|| widget.joinMode == "Invite")
                 ? "Beitreten um Chat zu sehen"
                 : (widget.joinMode == "Request")
                   ? _requested
@@ -454,7 +454,7 @@ class _ActivityChatState extends State<ActivityChat> with WidgetsBindingObserver
               ),
               child: 
                 Text(
-                  (widget.joinMode == "Instant")
+                  (widget.joinMode == "Instant"|| widget.joinMode == "Invite")
                     ? _joined 
                       ? "Beigetreten"
                       : "Beitreten"
