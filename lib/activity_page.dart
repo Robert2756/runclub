@@ -34,6 +34,155 @@ const List<double> _mutedMapFilter = [
   0,     0,      0,    1,  0,
 ];
 
+/// Wraps a FlutterMap TileProvider so we can know when every tile
+/// currently in flight has finished loading (or failed), instead of
+/// guessing with a fixed timer.
+class _TrackingTileProvider extends NetworkTileProvider {
+  _TrackingTileProvider({required this.onPendingCountChanged});
+
+  final ValueChanged<int> onPendingCountChanged;
+  int _pending = 0;
+
+  void _increment() {
+    _pending++;
+    onPendingCountChanged(_pending);
+  }
+
+  void _decrement() {
+    _pending = (_pending - 1).clamp(0, 1 << 30);
+    onPendingCountChanged(_pending);
+  }
+
+  @override
+  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
+    final provider = super.getImage(coordinates, options);
+    _increment();
+    final stream = provider.resolve(const ImageConfiguration());
+    late ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (_, __) {
+        _decrement();
+        stream.removeListener(listener);
+      },
+      onError: (_, __) {
+        _decrement(); // don't let one failed tile hang the shimmer forever
+        stream.removeListener(listener);
+      },
+    );
+    stream.addListener(listener);
+    return provider;
+  }
+}
+
+/// A muted, non-interactive map with a shimmer that stays up until this
+/// map's own tiles have actually finished loading (with a safety-net
+/// timeout so it never gets stuck if tiles fail or never arrive).
+class _RevealingMap extends StatefulWidget {
+  final LatLng location;
+  final double initialZoom;
+  final bool showMarker;
+  final String? activity;
+  final String mapUrl;
+  final Key mapKey; // e.g. ValueKey(_joined), forces a fresh FlutterMap
+
+  const _RevealingMap({
+    required this.location,
+    required this.initialZoom,
+    required this.showMarker,
+    required this.activity,
+    required this.mapUrl,
+    required this.mapKey,
+  });
+
+  @override
+  State<_RevealingMap> createState() => _RevealingMapState();
+}
+
+class _RevealingMapState extends State<_RevealingMap> {
+  bool _mapReady = false;
+  Timer? _fallbackTimer;
+  late final _TrackingTileProvider _tileProvider = _TrackingTileProvider(
+    onPendingCountChanged: (pending) {
+      if (pending == 0 && mounted && !_mapReady) {
+        _reveal();
+      }
+    },
+  );
+
+  void _reveal() {
+    _fallbackTimer?.cancel();
+    if (!mounted || _mapReady) return;
+    setState(() => _mapReady = true);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Safety net only, in case tiles never resolve (offline, bad key,
+    // slow network) — the image-loaded path above is what fires normally.
+    _fallbackTimer = Timer(const Duration(milliseconds: 3000), _reveal);
+  }
+
+  @override
+  void dispose() {
+    _fallbackTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ColorFiltered(
+          colorFilter: const ColorFilter.matrix(_mutedMapFilter),
+          child: FlutterMap(
+            key: widget.mapKey,
+            options: MapOptions(
+              initialCenter: widget.location,
+              initialZoom: widget.initialZoom,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.none,
+              ),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: widget.mapUrl,
+                userAgentPackageName: 'com.robert.app',
+                tileProvider: _tileProvider,
+                tileDisplay: const TileDisplay.instantaneous(),
+              ),
+              if (widget.showMarker)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: widget.location,
+                      width: MapPinMarker.bodyDiameter,
+                      height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
+                      alignment: Alignment.center,
+                      child: MapPinMarker(
+                        activity: widget.activity == "Bike" ? "Bike" : "Run",
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+        IgnorePointer(
+          ignoring: _mapReady,
+          child: AnimatedOpacity(
+            opacity: _mapReady ? 0 : 1,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+            child: const _ShimmerPlaceholder(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ShimmerPlaceholder extends StatelessWidget {
   const _ShimmerPlaceholder();
 
@@ -143,8 +292,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   Key _chatKey = UniqueKey(); // if key changes -> build ActivityChat new (as it is passed as key)
   Key _detailsKey = UniqueKey();
   bool _addingToCalendar = false;
-  bool _mapReady = false;
-  Timer? _mapRevealTimer;
 
   RealtimeChannel? _messagesChannel;
   bool _viewingChat = false; // true while ActivityChatPage is pushed on top
@@ -155,14 +302,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
-
-  void _scheduleMapReveal() {
-    _mapRevealTimer?.cancel();
-    _mapRevealTimer = Timer(const Duration(milliseconds: 450), () {
-      if (!mounted) return;
-      setState(() => _mapReady = true);
-    });
-  }
 
   void _subscribeToMessages() {
     if (!_joined || _requested) return;
@@ -801,7 +940,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
   @override
   void dispose() {
-    _mapRevealTimer?.cancel();
     _unsubscribeFromMessages();
     super.dispose();
   }
@@ -811,7 +949,6 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     super.initState();
     loadActivity();
     _mode = ActivityMode.details;
-    _scheduleMapReveal();
   }
 
   Future<Calendar?> _pickCalendar(List<Calendar> calendars) async {
@@ -1199,58 +1336,13 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
         ? LatLng(post!.latitude!, post!.longitude!)
         : LatLng(0.0, 0.0);
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        ColorFiltered(
-          colorFilter: const ColorFilter.matrix(_mutedMapFilter),
-          child: FlutterMap(
-            key: ValueKey(_joined),
-            options: MapOptions(
-              initialCenter: location,
-              initialZoom: initialZoom,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.none,
-              ),
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: mapUrl,
-                userAgentPackageName: 'com.robert.app',
-                tileDisplay: const TileDisplay.fadeIn(duration: Duration(milliseconds: 250)),
-              ),
-              if (showMarker && post!.latitude != null && post!.longitude != null)
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: location,
-                      width: MapPinMarker.bodyDiameter,
-                      height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
-                      alignment: Alignment.center,
-                      child: post!.activity == null
-                        ? MapPinMarker(activity: "Run")
-                        : post!.activity == "Run"
-                          ? MapPinMarker(activity: "Run")
-                          : MapPinMarker(activity: "Bike"),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ),
-
-        // Same shimmer-to-reveal window as the feed card, so tiles
-        // don't pop in raw right as the sheet/hero mounts.
-        IgnorePointer(
-          ignoring: _mapReady,
-          child: AnimatedOpacity(
-            opacity: _mapReady ? 0 : 1,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-            child: const _ShimmerPlaceholder(),
-          ),
-        ),
-      ],
+    return _RevealingMap(
+      location: location,
+      initialZoom: initialZoom,
+      showMarker: showMarker && post!.latitude != null && post!.longitude != null,
+      activity: post!.activity,
+      mapUrl: mapUrl,
+      mapKey: ValueKey(_joined),
     );
   }
 

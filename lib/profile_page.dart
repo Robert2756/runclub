@@ -70,6 +70,31 @@ class _ProfileContentState extends State<ProfileContent> {
     fetchRuns();
   }
 
+  Future<void> refresh() async {
+    final expandedKeys = monthExpanded.entries
+      .where((e) => e.value)
+      .map((e) => e.key)
+      .toList();
+    // Drop cached past-months data and viewer-join status so refresh
+    // actually pulls fresh state instead of just re-adding to old sets.
+    setState(() {
+      monthPosts.clear();
+      monthLoaded.clear();
+      monthLoading.clear();
+      _viewerJoinedPostIds.clear();
+      for (final key in expandedKeys) {
+        monthLoading[key] = true;
+      }
+    });
+
+    await fetchRuns();
+
+    for (final key in expandedKeys) {
+      final parts = key.split('-');
+      await _loadMonth(int.parse(parts[0]), int.parse(parts[1]), force: true);
+    }
+  }
+
   Future<void> fetchRuns() async {
     if (_loadingRuns) return;
 
@@ -182,14 +207,16 @@ class _ProfileContentState extends State<ProfileContent> {
     return !_viewerJoinedPostIds.contains(post.id);
   }
 
-  Future<void> _loadMonth(int year, int month) async {
+  Future<void> _loadMonth(int year, int month, {bool force = false}) async {
     final key = "$year-$month";
 
-    if (monthLoaded[key] == true || monthLoading[key] == true) return;
+    if (!force && (monthLoaded[key] == true || monthLoading[key] == true)) return;
 
-    setState(() {
-      monthLoading[key] = true;
-    });
+    if (monthLoading[key] != true) {
+      setState(() {
+        monthLoading[key] = true;
+      });
+    }
 
     final start = DateTime(year, month, 1).toUtc();
     final endOfMonth = DateTime(year, month + 1, 0, 23, 59, 59).toUtc();
@@ -1095,9 +1122,14 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
   int _avatarCacheBuster = 0;
   String? get _displayAvatarUrl =>
     _avatarUrl == null ? null : '$_avatarUrl?v=$_avatarCacheBuster';
+  final GlobalKey<_ProfileContentState> _profileContentKey = GlobalKey();
 
   Future<void> _refreshProfile() async {
-    await fetchProfile();
+    await Future.wait([
+      fetchProfile(),
+      fetchConnection(),
+      _profileContentKey.currentState?.refresh() ?? Future.value(),
+    ]);
   }
 
   Future<void> fetchConnection() async {
@@ -1775,8 +1807,8 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
           ],
         ],
       ),
-body: _profileReady
-    ? SafeArea(
+      body: _profileReady
+          ? SafeArea(
         child: RefreshIndicator(
           color: Colors.black,
           backgroundColor: Colors.white,
@@ -1813,6 +1845,7 @@ body: _profileReady
                   ],
                   const SizedBox(height: 16),
                   ProfileContent(
+                    key: _profileContentKey,
                     isMe: isMe,
                     profileId: widget.profileId,
                     togetherCount: _togetherCount,
