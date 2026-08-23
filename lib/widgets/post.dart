@@ -23,6 +23,41 @@ import 'package:cached_network_image/cached_network_image.dart';
 final supabase = Supabase.instance.client;
 final dataFormatter = DataFormatter();
 
+// const List<double> _mutedMapFilter = [
+//   0.882, 0.107, 0.011, 0, -3,
+//   0.032, 0.957, 0.011, 0, -1,
+//   0.032, 0.107, 0.861, 0,  6,
+//   0,     0,     0,     1,  0,
+// ];
+
+// const List<double> _mutedMapFilter = [
+//   1.02, -0.03, -0.01, 0, -2,
+//  -0.02,  1.04, -0.02, 0, -2,
+//  -0.01, -0.03,  1.08, 0,  1,
+//   0,      0,     0,    1,  0,
+// ];
+
+// const List<double> _mutedMapFilter = [
+//    1.02, -0.03, -0.01, 0, -2,
+//   -0.03,  1.055, -0.03, 0, -2,
+//   -0.01, -0.03,  1.08, 0,  1,
+//    0,      0,      0,    1,  0,
+// ];
+
+// const List<double> _mutedMapFilter = [
+//   1.06, -0.04, -0.02, 0, -3,
+//  -0.03,  1.08, -0.03, 0, -3,
+//  -0.02, -0.04,  1.13, 0,  2,
+//   0,     0,      0,    1,  0,
+// ];
+
+const List<double> _mutedMapFilter = [
+  1.08, -0.04, -0.02, 0, -1,
+ -0.03,  1.07, -0.03, 0, -2,
+ -0.02, -0.04,  1.08, 0,  0,
+  0,     0,      0,    1,  0,
+];
+
 class _ShimmerPlaceholder extends StatelessWidget {
   const _ShimmerPlaceholder();
 
@@ -36,6 +71,43 @@ class _ShimmerPlaceholder extends StatelessWidget {
         child: Container(color: Colors.grey.shade200),
       ),
     );
+  }
+}
+
+class _TrackingTileProvider extends NetworkTileProvider {
+  _TrackingTileProvider({required this.onPendingCountChanged});
+
+  final ValueChanged<int> onPendingCountChanged;
+  int _pending = 0;
+
+  void _increment() {
+    _pending++;
+    onPendingCountChanged(_pending);
+  }
+
+  void _decrement() {
+    _pending = (_pending - 1).clamp(0, 1 << 30);
+    onPendingCountChanged(_pending);
+  }
+
+  @override
+  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
+    final provider = super.getImage(coordinates, options);
+    _increment();
+    final stream = provider.resolve(const ImageConfiguration());
+    late ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (_, __) {
+        _decrement();
+        stream.removeListener(listener);
+      },
+      onError: (_, __) {
+        _decrement(); // don't let a failed tile hang the shimmer forever
+        stream.removeListener(listener);
+      },
+    );
+    stream.addListener(listener);
+    return provider;
   }
 }
 
@@ -157,10 +229,22 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     }
   }
 
+  int _pendingTiles = 0;
+  Timer? _mapRevealFallback;
+  late final _TrackingTileProvider _tileProvider = _TrackingTileProvider(
+    onPendingCountChanged: (pending) {
+      setState(() => _pendingTiles = pending);
+      if (pending == 0 && mounted && !_mapReady) {
+        _mapRevealFallback?.cancel();
+        setState(() => _mapReady = true);
+      }
+    },
+  );
+
   void _scheduleMapReveal() {
-    _mapRevealTimer?.cancel();
-    _mapRevealTimer = Timer(const Duration(milliseconds: 450), () {
-      if (!mounted) return;
+    // Safety net only — in case tiles never finish (offline, bad key, etc.)
+    _mapRevealFallback = Timer(const Duration(milliseconds: 3000), () {
+      if (!mounted || _mapReady) return;
       setState(() => _mapReady = true);
     });
   }
@@ -395,46 +479,150 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     final content = Stack(
       fit: StackFit.expand,
       children: [
-        FlutterMap(
-          options: MapOptions(
-            initialCenter: location,
-            initialZoom: initialZoom,
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.none,
+        Positioned.fill(
+          child: Container(color: Colors.grey.shade200),
+        ),
+        ColorFiltered(
+          colorFilter: const ColorFilter.matrix(_mutedMapFilter),
+          child: FlutterMap(
+            options: MapOptions(
+              initialCenter: location,
+              initialZoom: initialZoom,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.none,
+              ),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: _mapUrl,
+                tileProvider: _tileProvider,
+                userAgentPackageName: 'com.robert.app',
+                tileDisplay: const TileDisplay.fadeIn(duration: Duration(milliseconds: 250)),
+              ),
+              if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: location,
+                      width: MapPinMarker.bodyDiameter,
+                      height: MapPinMarker.bodyDiameter,
+                      alignment: Alignment.center,
+                      child: MapPinMarker(
+                        activity: widget.post.activity == "Bike" ? "Bike" : "Run",
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+
+        // Top-right vignette — radial so it falls off smoothly in every
+        // direction from the corner, instead of being cropped by a box edge.
+        AnimatedOpacity(
+          opacity: _mapReady ? 1 : 0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeIn,
+          child: Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment.topRight,
+                    radius: 0.45,
+                    colors: [
+                      Colors.black.withOpacity(0.06),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 1.0],
+                  ),
+                ),
+              ),
             ),
           ),
-          children: [
-          TileLayer(
-            urlTemplate: _mapUrl,
-            userAgentPackageName: 'com.robert.app',
-            // maxNativeZoom: 20, // let MapTiler serve its sharpest available tile
-            tileDisplay: const TileDisplay.fadeIn(duration: Duration(milliseconds: 250)),
-          ),
-            if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: location,
-                    width: MapPinMarker.bodyDiameter,
-                    height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
-                    alignment: Alignment.topCenter,
-                    child:
-                    widget.post.activity == null
-                    ? MapPinMarker(activity: "Run")
-                    : widget.post.activity == "Run"
-                      ? MapPinMarker(activity: "Run")
-                      : MapPinMarker(activity: "Bike")
-                  ),
-                ],
-              )
-          ],
         ),
-        if (showLocationMarker)
-          _buildLocationNotice(),
 
-        // Shimmer covers the map until the reveal window closes,
-        // then fades out. IgnorePointer while showing so it doesn't
-        // swallow taps meant for the map/card underneath.
+        // Bottom vignette — same fade-in timing as the top one.
+        AnimatedOpacity(
+          opacity: _mapReady ? 1 : 0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeIn,
+          child: Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.center,
+                    colors: [
+                      Colors.black.withOpacity(0.28),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // // Modern town label — frosted glass pill, matching the lock badge's
+        // // material language (BackdropFilter blur + hairline border + soft
+        // // diffuse shadow) instead of a flat opaque chip.
+        // if (widget.post.town != null && widget.post.town!.isNotEmpty)
+        //   Positioned(
+        //     left: 14,
+        //     bottom: 14,
+        //     child: ClipRRect(
+        //       borderRadius: BorderRadius.circular(12),
+        //       child: BackdropFilter(
+        //         filter: dart_ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        //         child: Container(
+        //           padding: const EdgeInsets.symmetric(
+        //             horizontal: 11,
+        //             vertical: 7,
+        //           ),
+        //           decoration: BoxDecoration(
+        //             color: Colors.white.withOpacity(0.72),
+        //             borderRadius: BorderRadius.circular(12),
+        //             border: Border.all(
+        //               color: Colors.white.withOpacity(0.55),
+        //               width: 0.75,
+        //             ),
+        //             boxShadow: [
+        //               BoxShadow(
+        //                 color: Colors.black.withOpacity(0.10),
+        //                 blurRadius: 16,
+        //                 offset: const Offset(0, 4),
+        //               ),
+        //             ],
+        //           ),
+        //           child: Row(
+        //             mainAxisSize: MainAxisSize.min,
+        //             children: [
+        //               Icon(
+        //                 Icons.place_rounded,
+        //                 size: 13,
+        //                 color: Colors.black.withOpacity(0.55),
+        //               ),
+        //               const SizedBox(width: 5),
+        //               Text(
+        //                 widget.post.town!,
+        //                 style: TextStyle(
+        //                   fontSize: 12.5,
+        //                   fontWeight: FontWeight.w600,
+        //                   letterSpacing: -0.15,
+        //                   color: Colors.black.withOpacity(0.85),
+        //                 ),
+        //               ),
+        //             ],
+        //           ),
+        //         ),
+        //       ),
+        //     ),
+        //   ),
+
+        if (showLocationMarker) _buildLocationNotice(),
+
         IgnorePointer(
           ignoring: _mapReady,
           child: AnimatedOpacity(

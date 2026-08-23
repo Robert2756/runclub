@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui' as dart_ui;
 import '../profile_page.dart';
+import '../profile_page.dart'; // for EnduvoColors
 
 class _MapPinPainter extends CustomPainter {
   final double bodyDiameter;
@@ -72,9 +73,10 @@ class _MapPinPainter extends CustomPainter {
 }
 
 class MapPinMarker extends StatelessWidget {
-  static const double bodyDiameter = 40;
-  static const double tailHeight = 3;
-  static const double iconSize = 18;
+  static const double bodyDiameter = 58; // total footprint incl. glow
+  static const double tailHeight = 0;    // no tail anymore
+  static const double _coreDiameter = 36;
+  static const double iconSize = 20;
 
   final String activity;
 
@@ -87,27 +89,57 @@ class MapPinMarker extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: bodyDiameter,
-      height: bodyDiameter + tailHeight,
+      height: bodyDiameter,
       child: Stack(
-        clipBehavior: Clip.none,
+        alignment: Alignment.center,
         children: [
-          CustomPaint(
-            size: const Size(bodyDiameter, bodyDiameter + tailHeight),
-            painter: const _MapPinPainter(
-              bodyDiameter: bodyDiameter,
-              tailHeight: tailHeight,
+          // Soft outer glow — brand teal, heavily blurred, low opacity.
+          Container(
+            width: bodyDiameter,
+            height: bodyDiameter,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  // EnduvoColors.teal.withOpacity(0.30),
+                  // EnduvoColors.teal.withOpacity(0.0),
+                  EnduvoColors.muted.withOpacity(0.30),
+                  EnduvoColors.muted.withOpacity(0.0),
+                ],
+              ),
             ),
           ),
-          Positioned(
-            top: (bodyDiameter - iconSize) / 2,
-            left: (bodyDiameter - iconSize) / 2,
-            child: Icon(
-              activity == "Bike"
-              ? Icons.directions_bike
-              : Icons.directions_run,
-              size: iconSize,
-              color: Color.fromARGB(255, 255, 255, 255),
+          // Core marker: white disc, soft shadow, thin brand ring.
+          Container(
+            width: _coreDiameter,
+            height: _coreDiameter,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              border: Border.all(
+                color: EnduvoColors.navy.withOpacity(0.12),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.16),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
+            // child: Icon(
+            //   activity == "Bike"
+            //       ? Icons.directions_bike_rounded
+            //       : Icons.directions_run_rounded,
+            //   size: iconSize,
+            //   color: EnduvoColors.navy,
+            // ),
+            child: Icon(
+              Icons.location_on_rounded,
+              size: iconSize,
+              color: EnduvoColors.navy,
+            )
           ),
         ],
       ),

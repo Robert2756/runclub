@@ -23,7 +23,32 @@ import 'package:device_calendar/device_calendar.dart';
 import 'widgets/map_marker.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'dart:async';
+import 'package:shimmer/shimmer.dart';
 final supabase = Supabase.instance.client;
+
+const List<double> _mutedMapFilter = [
+  1.08, -0.04, -0.02, 0, -1,
+ -0.03,  1.07, -0.03, 0, -2,
+ -0.02, -0.04,  1.08, 0,  0,
+  0,     0,      0,    1,  0,
+];
+
+class _ShimmerPlaceholder extends StatelessWidget {
+  const _ShimmerPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey.shade200,
+        highlightColor: Colors.grey.shade100,
+        period: const Duration(milliseconds: 1400),
+        child: Container(color: Colors.grey.shade200),
+      ),
+    );
+  }
+}
 
 enum ActivityMode {
   details,
@@ -118,6 +143,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   Key _chatKey = UniqueKey(); // if key changes -> build ActivityChat new (as it is passed as key)
   Key _detailsKey = UniqueKey();
   bool _addingToCalendar = false;
+  bool _mapReady = false;
+  Timer? _mapRevealTimer;
 
   RealtimeChannel? _messagesChannel;
   bool _viewingChat = false; // true while ActivityChatPage is pushed on top
@@ -128,6 +155,14 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/voyager-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   // final mapUrl = 'https://api.maptiler.com/maps/topo-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+
+  void _scheduleMapReveal() {
+    _mapRevealTimer?.cancel();
+    _mapRevealTimer = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted) return;
+      setState(() => _mapReady = true);
+    });
+  }
 
   void _subscribeToMessages() {
     if (!_joined || _requested) return;
@@ -766,6 +801,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    _mapRevealTimer?.cancel();
     _unsubscribeFromMessages();
     super.dispose();
   }
@@ -775,7 +811,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
     super.initState();
     loadActivity();
     _mode = ActivityMode.details;
-
+    _scheduleMapReveal();
   }
 
   Future<Calendar?> _pickCalendar(List<Calendar> calendars) async {
@@ -1163,37 +1199,57 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
         ? LatLng(post!.latitude!, post!.longitude!)
         : LatLng(0.0, 0.0);
 
-    return FlutterMap(
-      key: ValueKey(_joined),
-      options: MapOptions(
-        initialCenter: location,
-        initialZoom: initialZoom,
-        interactionOptions: const InteractionOptions(
-          flags: InteractiveFlag.none,
-        ),
-      ),
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        TileLayer(
-          urlTemplate: mapUrl,
-          userAgentPackageName: 'com.robert.app',
-        ),
-        if (showMarker && post!.latitude != null && post!.longitude != null)
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: location,
-                width: MapPinMarker.bodyDiameter,
-                height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
-                alignment: Alignment.topCenter,
-                child:                       
-                post!.activity == null
-                  ? MapPinMarker(activity: "Run")
-                  : post!.activity == "Run"
-                    ? MapPinMarker(activity: "Run")
-                    : MapPinMarker(activity: "Bike")
+        ColorFiltered(
+          colorFilter: const ColorFilter.matrix(_mutedMapFilter),
+          child: FlutterMap(
+            key: ValueKey(_joined),
+            options: MapOptions(
+              initialCenter: location,
+              initialZoom: initialZoom,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.none,
               ),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: mapUrl,
+                userAgentPackageName: 'com.robert.app',
+                tileDisplay: const TileDisplay.fadeIn(duration: Duration(milliseconds: 250)),
+              ),
+              if (showMarker && post!.latitude != null && post!.longitude != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: location,
+                      width: MapPinMarker.bodyDiameter,
+                      height: MapPinMarker.bodyDiameter + MapPinMarker.tailHeight,
+                      alignment: Alignment.center,
+                      child: post!.activity == null
+                        ? MapPinMarker(activity: "Run")
+                        : post!.activity == "Run"
+                          ? MapPinMarker(activity: "Run")
+                          : MapPinMarker(activity: "Bike"),
+                    ),
+                  ],
+                ),
             ],
-          )
+          ),
+        ),
+
+        // Same shimmer-to-reveal window as the feed card, so tiles
+        // don't pop in raw right as the sheet/hero mounts.
+        IgnorePointer(
+          ignoring: _mapReady,
+          child: AnimatedOpacity(
+            opacity: _mapReady ? 0 : 1,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+            child: const _ShimmerPlaceholder(),
+          ),
+        ),
       ],
     );
   }
