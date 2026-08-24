@@ -19,6 +19,9 @@ import 'user_avatar.dart';
 import 'map_marker.dart';
 import 'dart:ui' as dart_ui;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/scheduler.dart';
+
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 final supabase = Supabase.instance.client;
 final dataFormatter = DataFormatter();
@@ -87,27 +90,95 @@ class _TrackingTileProvider extends NetworkTileProvider {
 
   void _decrement() {
     _pending = (_pending - 1).clamp(0, 1 << 30);
+    debugPrint("Pending: $_pending");
     onPendingCountChanged(_pending);
+  }
+
+  void _track(ImageProvider provider, TileCoordinates coords) {
+    _increment();
+    bool settled = false;
+
+    final stream = provider.resolve(const ImageConfiguration());
+    late final ImageStreamListener listener;
+
+    void settle(String reason) {
+      if (settled) return;
+      settled = true;
+      debugPrint('[tiles] settled ($reason) for $coords');
+      _decrement();
+      stream.removeListener(listener);
+    }
+
+    listener = ImageStreamListener(
+      (image, synchronousCall) => settle('loaded, sync=$synchronousCall'),
+      onError: (error, stackTrace) => settle('error'),
+    );
+
+    stream.addListener(listener);
   }
 
   @override
   ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
     final provider = super.getImage(coordinates, options);
-    _increment();
-    final stream = provider.resolve(const ImageConfiguration());
-    late ImageStreamListener listener;
-    listener = ImageStreamListener(
-      (_, __) {
-        _decrement();
-        stream.removeListener(listener);
-      },
-      onError: (_, __) {
-        _decrement(); // don't let a failed tile hang the shimmer forever
-        stream.removeListener(listener);
-      },
-    );
-    stream.addListener(listener);
+    _track(provider, coordinates);
     return provider;
+  }
+
+  @override
+  ImageProvider getImageWithCancelLoadingSupport(
+    TileCoordinates coordinates,
+    TileLayer options,
+    Future<void> cancelLoading,
+  ) {
+    final provider = super.getImageWithCancelLoadingSupport(coordinates, options, cancelLoading);
+    _track(provider, coordinates);
+    return provider;
+  }
+}
+
+/// Wraps a tile's [ImageProvider] so [onSettled] fires exactly once, when
+/// the *actual* load used by the tile's Image widget completes or errors —
+/// as opposed to independently calling `.resolve()` a second time, which
+/// starts a separate, redundant resolution that isn't guaranteed to behave
+/// the same way as the one flutter_map really paints from.
+class _CountingImageProvider extends ImageProvider<Object> {
+  _CountingImageProvider(this._inner, this._coords, this.onSettled);
+
+  final ImageProvider<Object> _inner;
+  final TileCoordinates _coords;
+  final VoidCallback onSettled;
+  bool _settled = false;
+
+  void _settle(String reason) {
+    if (_settled) return;
+    _settled = true;
+    debugPrint('[tiles] settled ($reason) for $_coords');
+    onSettled();
+  }
+
+  @override
+  Future<Object> obtainKey(ImageConfiguration configuration) =>
+      _inner.obtainKey(configuration);
+
+  @override
+  ImageStreamCompleter loadImage(Object key, ImageDecoderCallback decode) {
+    late final ImageStreamCompleter completer;
+    try {
+      completer = _inner.loadImage(key, decode);
+    } catch (e, st) {
+      debugPrint('[tiles] loadImage threw synchronously for $_coords: $e');
+      rethrow;
+    }
+    completer.addListener(
+      ImageStreamListener(
+        (image, synchronousCall) => _settle('loaded, sync=$synchronousCall'),
+        onError: (error, stackTrace) {
+          debugPrint('[tiles] onError for $_coords: $error');
+          _settle('error');
+        },
+      ),
+    );
+    return completer;
   }
 }
 
@@ -187,7 +258,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   // between image/map afterwards is effectively instant and doesn't
   // need to re-trigger this.
   bool _mapReady = false;
-  Timer? _mapRevealTimer;
   bool _locationNoticeExpanded = false;
 
   // Image/map carousel state. The media box is always a 4:3 box; the
@@ -198,6 +268,9 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   bool _carouselShowingImage = true;
   bool _carouselInitialPositionApplied = false;
 
+  final Set<String> _evictedUrls = {};   // guards against repeat eviction/retry loops
+  bool _imageRetryFailed = false;         // stop retrying after a second failure
+
   String get _mapUrl {
     final dpr = WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
     final retina = dpr >= 2 ? '@2x' : '';
@@ -206,6 +279,19 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   }
 
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
+
+  void _safeSetState(VoidCallback fn) {
+    if (!mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      // We're mid-frame (build/layout/paint) — setState here would throw.
+      // Defer to right after this frame finishes.
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(fn);
+      });
+    } else {
+      setState(fn);
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -226,28 +312,28 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     if (oldWidget.post.id != widget.post.id) {
       _imageLoaded = false;
       _participantIds = List<String>.from(widget.participantIds);
+      _evictedUrls.clear();
     }
   }
 
   int _pendingTiles = 0;
-  Timer? _mapRevealFallback;
   late final _TrackingTileProvider _tileProvider = _TrackingTileProvider(
     onPendingCountChanged: (pending) {
-      setState(() => _pendingTiles = pending);
+      _safeSetState(() => _pendingTiles = pending);
       if (pending == 0 && mounted && !_mapReady) {
-        _mapRevealFallback?.cancel();
-        setState(() => _mapReady = true);
+        debugPrint("Tiles arrived");
+        _safeSetState(() => _mapReady = true);
       }
     },
   );
 
-  void _scheduleMapReveal() {
-    // Safety net only — in case tiles never finish (offline, bad key, etc.)
-    _mapRevealFallback = Timer(const Duration(milliseconds: 3000), () {
-      if (!mounted || _mapReady) return;
-      setState(() => _mapReady = true);
-    });
-  }
+  // void _scheduleMapReveal() {
+  //   // Safety net only — in case tiles never finish (offline, bad key, etc.)
+  //   _mapRevealFallback = Timer(const Duration(milliseconds: 3000), () {
+  //     if (!mounted || _mapReady) return;
+  //     setState(() => _mapReady = true);
+  //   });
+  // }
 
   Future<void> loadAll() async {
     try {
@@ -394,6 +480,18 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     return "Vor $d Tag${d > 1 ? "en" : ""}";
   }
 
+  Future<void> _evictAndRetry(String url) async {
+    try {
+      await DefaultCacheManager().removeFile(url);
+      debugPrint('[img] evicted corrupted cache entry for $url');
+    } catch (e) {
+      debugPrint('[img] eviction failed for $url: $e');
+    }
+
+    if (!mounted) return;
+    setState(() {}); // rebuild so CachedNetworkImage re-requests, cache miss now forces a fresh download
+  }
+
   Widget _buildLocationNotice({bool show = true}) {
     if (!show) return const SizedBox.shrink();
 
@@ -472,6 +570,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     bool showLocationMarker = true,
     bool asAspectRatioBox = true,
   }) {
+    debugPrint('[tiles] _buildMap called, showMarker=$showMarker');
     final location = (widget.post.latitude != null && widget.post.longitude != null)
         ? LatLng(widget.post.latitude!, widget.post.longitude!)
         : LatLng(0.0, 0.0);
@@ -498,6 +597,8 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                 tileProvider: _tileProvider,
                 userAgentPackageName: 'com.robert.app',
                 tileDisplay: const TileDisplay.fadeIn(duration: Duration(milliseconds: 250)),
+                keepBuffer: 0,          // don't keep/preload tiles outside the viewport
+                panBuffer: 0,           // don't prefetch a ring of tiles around the edges
               ),
               if (showMarker && widget.post.latitude != null && widget.post.longitude != null)
                 MarkerLayer(
@@ -517,13 +618,12 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
           ),
         ),
 
-        // Top-right vignette — radial so it falls off smoothly in every
-        // direction from the corner, instead of being cropped by a box edge.
-        AnimatedOpacity(
-          opacity: _mapReady ? 1 : 0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeIn,
-          child: Positioned.fill(
+        // Top-right vignette
+        Positioned.fill(
+          child: AnimatedOpacity(
+            opacity: _mapReady ? 1 : 0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeIn,
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -542,12 +642,12 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
           ),
         ),
 
-        // Bottom vignette — same fade-in timing as the top one.
-        AnimatedOpacity(
-          opacity: _mapReady ? 1 : 0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeIn,
-          child: Positioned.fill(
+        // Bottom vignette
+        Positioned.fill(
+          child: AnimatedOpacity(
+            opacity: _mapReady ? 1 : 0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeIn,
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -669,8 +769,33 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
             filterQuality: FilterQuality.low,
             fadeInDuration: Duration.zero,      // you already have your own shimmer transition; avoid double-fade
             fadeOutDuration: Duration.zero,
-            placeholder: (context, url) => const _ShimmerPlaceholder(),
+            placeholder: (context, url) {
+              debugPrint('[img] placeholder for $url');
+              return const _ShimmerPlaceholder();
+            },
             errorWidget: (context, url, error) {
+              debugPrint('[img] ERROR for $url: $error');
+
+              if (!_evictedUrls.contains(url)) {
+                // First failure — evict the possibly-corrupted cache entry and retry once.
+                _evictedUrls.add(url);
+                _evictAndRetry(url);
+                return Container(
+                  color: Colors.grey.shade200,
+                  child: const _ShimmerPlaceholder(),
+                );
+              }
+
+              // We already evicted + retried this exact URL and it failed again —
+              // this is a genuinely broken file, not a cache problem. Stop retrying.
+              if (!_imageRetryFailed) {
+                // setState isn't strictly needed here since we're already mid-build,
+                // but do it via a post-frame callback so future builds skip retry logic cleanly.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() => _imageRetryFailed = true);
+                });
+              }
+
               return Container(
                 color: Colors.grey.shade200,
                 child: const Center(
@@ -895,6 +1020,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
       aspectRatio: 4 / 3,
       child: LayoutBuilder(
         builder: (context, constraints) {
+          debugPrint('[tiles] carousel constraints: $constraints');
           final double boxHeight = constraints.maxHeight;
           final double boxWidth = constraints.maxWidth;
           final double imageWidth = boxHeight; // 1:1 square
@@ -976,19 +1102,19 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
   @override
   void initState() {
     super.initState();
+    debugPrint('[tiles] supportsCancelLoading = ${_tileProvider.supportsCancelLoading}');
     _carouselShowingImage = widget.showImageMain;
     _participantIds = List<String>.from(widget.participantIds);
     loadAll();
-    // Kick off the map's shimmer-to-reveal window once per card, right
-    // away — regardless of whether the map or the image is the main
-    // view right now, since the map is also rendered as part of the
-    // carousel when the image is main.
-    _scheduleMapReveal();
+    // // Kick off the map's shimmer-to-reveal window once per card, right
+    // // away — regardless of whether the map or the image is the main
+    // // view right now, since the map is also rendered as part of the
+    // // carousel when the image is main.
+    // _scheduleMapReveal();
   }
 
   @override
   void dispose() {
-    _mapRevealTimer?.cancel();
     _carouselController.dispose();
     super.dispose();
   }

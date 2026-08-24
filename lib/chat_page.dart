@@ -23,12 +23,14 @@ class ActivityChatPage extends StatefulWidget {
 class ActivityChatPageState extends State<ActivityChatPage>{
   late bool _joined;
   late bool _requested;
+  late int _participantsCount;
 
   @override
   void initState() {
     super.initState();
     _joined = widget.initialJoined;
     _requested = widget.initialRequested;
+    _participantsCount = widget.participantsCount;
   }
 
   @override
@@ -102,7 +104,7 @@ class ActivityChatPageState extends State<ActivityChatPage>{
                   ),
 
                   Text(
-                    "${widget.participantsCount} ${widget.participantsCount == 1 ? "Person" : "Personen"}",
+                    "${_participantsCount} ${_participantsCount == 1 ? "Person" : "Personen"}",
                     style: TextStyle(
                       fontSize: 13,
                       color: Colors.grey[600],
@@ -138,6 +140,15 @@ class ActivityChatPageState extends State<ActivityChatPage>{
               markUnread: () {},
               joinMode: widget.post.joinMode,
               onActiveRead: null,
+              onJoinChanged: (joined) {
+              setState(() {
+                  _joined = joined;
+                  if (joined) _participantsCount += 1;
+                });
+              },
+              onRequestedChanged: (requested) {
+                setState(() => _requested = requested);
+              },
             ),
           )
         ],

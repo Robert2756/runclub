@@ -257,6 +257,7 @@ class _ProfileContentState extends State<ProfileContent> {
         town: e['town'],
         createdAt: e['created_at'],
         startsAt: e['starts_at'],
+        joinMode: e['join_mode'],
       );
     }).toList();
 
@@ -1109,7 +1110,10 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
   String? _fullName;
   String? _userName;
   final supabase = Supabase.instance.client;
-  bool get isMe => widget.profileId == supabase.auth.currentUser!.id;
+  bool get isMe {
+    final uid = supabase.auth.currentUser?.id;
+    return uid != null && widget.profileId == uid;
+  }
   String? _bio;
   final ScrollController _scrollController = ScrollController();
   bool isRefreshing = false;
@@ -1120,6 +1124,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
     _userName != null;
   bool _uploadingAvatar = false;
   int _avatarCacheBuster = 0;
+  bool _signingOut = false;
   String? get _displayAvatarUrl =>
     _avatarUrl == null ? null : '$_avatarUrl?v=$_avatarCacheBuster';
   final GlobalKey<_ProfileContentState> _profileContentKey = GlobalKey();
@@ -1235,6 +1240,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
   // fetch profile image when loading the page
   Future<void> fetchProfile() async {
     if (_loadingProfile) return;
+    if (supabase.auth.currentUser == null) return; // signed out — page is on its way out
     _loadingProfile = true;
     try {
       final response = await supabase
@@ -1723,6 +1729,12 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
 
   @override
   Widget build(BuildContext context) {
+    if (supabase.auth.currentUser == null) {
+      return const Scaffold(
+        backgroundColor: EnduvoColors.background,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     return Scaffold(
       backgroundColor: EnduvoColors.background, // Colors.white,
       appBar: AppAppBar(
@@ -1730,8 +1742,16 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
           if (isMe) ...[
             IconButton(
               tooltip: 'Abmelden',
-              icon: const Icon(Icons.logout),
-              onPressed: () async {
+              icon: _signingOut
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.logout),
+              onPressed: _signingOut
+                ? null
+                : () async {
                 final shouldSignOut = await showDialog<bool>(
                   context: context,
                   builder: (dialogContext) {
@@ -1776,6 +1796,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                 );
 
                 if (shouldSignOut != true) return;
+                setState(() => _signingOut = true);
 
                 try {
                   await supabase.auth.signOut();
@@ -1783,6 +1804,7 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
                   debugPrint('Logout failed: $e');
 
                   if (!context.mounted) return;
+                  setState(() => _signingOut = false);
 
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(

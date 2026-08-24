@@ -42,6 +42,11 @@ class SupabaseAuthListenable extends ChangeNotifier {
       debugPrintStack(stackTrace: stackTrace);
     });
   }
+  void markReadyFromInitialize() {
+    if (ready) return;
+    ready = true;
+    notifyListeners();
+  }
 }
 final authListenable = SupabaseAuthListenable();
 
@@ -117,7 +122,7 @@ final GoRouter router = GoRouter(
     ),
     GoRoute(path: '/reset-password', builder: (_, __) => ResetPasswordPage(onRecoveryFinished: () => router.go('/'))),
     GoRoute(path: '/signup', builder: (_, __) => const SignUpPage()),
-    GoRoute(path: '/', builder: (_, __) => const ProfileGate()), // your existing widget, unchanged
+    GoRoute(path: '/', builder: (_, __) => authListenable.ready ? const ProfileGate() : const SplashPage(),), // your existing widget, unchanged
   ],
 );
 
@@ -133,6 +138,7 @@ void main() async {
     authOptions: const FlutterAuthClientOptions(
     detectSessionInUri: false,
   ),);
+  authListenable.markReadyFromInitialize();
   final appLinks = AppLinks();
 
   // Handle the link that launched the app (cold start) — was missing before.
@@ -152,6 +158,17 @@ void main() async {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await initializeDateFormatting('de_DE', null);
   runApp(const MyApp());
+}
+
+class SplashPage extends StatelessWidget {
+  const SplashPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
+  }
 }
 
 Future<void> _handleDeepLink(Uri uri) async {
@@ -254,18 +271,16 @@ class _ProfileGateState extends State<ProfileGate> {
   }
 
   Future<Widget> _resolve() async {
+    final session = Supabase.instance.client.auth.currentSession;
+    final user = session?.user;
+
+    if (user == null) {
+      debugPrint("PROFILE GATE: no session");
+      return const SignInPage();
+    }
+
     try {
-      debugPrint("PROFILE GATE: starting");
-      final response =await Supabase.instance.client.auth.getUser();
-      final user = response.user;
-
-      if (user == null) {
-        debugPrint("PROFILE GATE: no valid user");
-        await Supabase.instance.client.auth.signOut();
-        return const SignInPage();
-      }
       debugPrint("PROFILE GATE: verified user ${user.id}");
-
       await ensureProfileExists(user);
       final profile = await Supabase.instance.client
           .from('profiles')
@@ -274,6 +289,7 @@ class _ProfileGateState extends State<ProfileGate> {
           .maybeSingle();
 
       if (profile == null) {
+        // Genuinely missing profile row — not a network hiccup.
         debugPrint("PROFILE GATE: profile doesn't exist");
         await Supabase.instance.client.auth.signOut();
         return const SignInPage();
@@ -281,20 +297,18 @@ class _ProfileGateState extends State<ProfileGate> {
 
       final done = profile['onboarding_completed'] == true;
       debugPrint("PROFILE GATE: onboarding completed = $done");
-      return done
-          ? const MainPage()
-          : OnboardingPage(
-            onCompleted: _onOnboardingCompleted,
-          );
-
-    } catch (e, stackTrace) {
-      debugPrint("PROFILE GATE ERROR: $e");
-      debugPrintStack(stackTrace: stackTrace);
-
-      // Session is invalid OR some other request failed.
+      return done ? const MainPage() : OnboardingPage(onCompleted: _onOnboardingCompleted);
+    } on AuthException catch (e) {
+      // Token genuinely invalid/expired/revoked — this IS a real auth failure.
+      debugPrint("PROFILE GATE AUTH ERROR: $e");
       await Supabase.instance.client.auth.signOut();
-
       return const SignInPage();
+    } catch (e, stackTrace) {
+      // Network/DB error, NOT an auth problem — don't punish the user
+      // with a forced logout for a transient failure. Let them retry.
+      debugPrint("PROFILE GATE TRANSIENT ERROR: $e");
+      debugPrintStack(stackTrace: stackTrace);
+      return _ProfileGateError(onRetry: () => setState(() => _future = _resolve()));
     }
   }
 
@@ -327,4 +341,85 @@ Future<void> ensureProfileExists(User user) async {
     'avatar_url': 'https://wczdhrcvwlghrkjmskaa.supabase.co/storage/v1/object/public/ProfileImages/defaultAvatar.jpeg',
     'created_at': DateTime.now().toIso8601String(),
   }, onConflict: 'id', ignoreDuplicates: true);
+}
+
+class _ProfileGateError extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _ProfileGateError({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.wifi_off_rounded,
+                    size: 28,
+                    color: Colors.black.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Verbindung fehlgeschlagen',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Wir konnten dein Profil nicht laden. Bitte überprüfe deine Internetverbindung.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.35,
+                    color: Colors.black.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: Material(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(26),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(26),
+                      onTap: onRetry,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 14),
+                        child: Center(
+                          child: Text(
+                            'Erneut versuchen',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

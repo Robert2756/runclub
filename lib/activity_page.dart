@@ -151,6 +151,8 @@ class _RevealingMapState extends State<_RevealingMap> {
                 userAgentPackageName: 'com.robert.app',
                 tileProvider: _tileProvider,
                 tileDisplay: const TileDisplay.instantaneous(),
+                keepBuffer: 0,          // don't keep/preload tiles outside the viewport
+                panBuffer: 0,           // don't prefetch a ring of tiles around the edges
               ),
               if (widget.showMarker)
                 MarkerLayer(
@@ -1710,7 +1712,8 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                 _viewingChat = false;
                 if (_joined) unreadCounter = 0; // optimistic — chat was open, everything's read
               });
-              await _reloadJoinState(recalcUnread: false); // just resync join/request status, not the count
+              // await _reloadJoinState(recalcUnread: false); // just resync join/request status, not the count
+              await loadActivity(); // full resync: post, participants, avatars, join/requested status
             }
 
           return; // IMPORTANT: stop mode switching
