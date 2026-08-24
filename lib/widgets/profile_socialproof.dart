@@ -13,14 +13,14 @@ class SocialProofCard extends StatelessWidget {
   });
 
   String _formatLast(DateTime? date) {
-    if (date == null) return "noch kein gemeinsamer Lauf";
+    if (date == null) return "noch nicht gemeinsam unterwegs";
 
     final diff = DateTime.now().difference(date).inDays;
 
-    if (diff == 0) return "heute zusammen gelaufen";
-    if (diff == 1) return "gestern zusammen gelaufen";
-    if (diff < 14) return "vor $diff Tagen zuletzt zusammen gelaufen";
-    if (diff < 365) return "vor ${(diff / 7).round()} Wochen zuletzt zusammen gelaufen";
+    if (diff == 0) return "heute zusammen unterwegs";
+    if (diff == 1) return "gestern zusammen unterwegs";
+    if (diff < 14) return "vor $diff Tagen zuletzt zusammen unterwegs";
+    if (diff < 365) return "vor ${(diff / 7).round()} Wochen zuletzt zusammen unterwegs";
     return "vor ${(diff / 365)}";
   }
 

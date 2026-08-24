@@ -164,8 +164,8 @@ class _ParticipantsPageState extends State<ParticipantsPage> {
                         if (togetherCount != 0)
                           Text(
                             togetherCount > 1
-                            ? "$togetherCount Läufe zusammen • letzter vor ${dataFormatter.formatTimeAgo(lastTogether)}"
-                            : "$togetherCount Lauf zusammen vor ${dataFormatter.formatTimeAgo(lastTogether)}",
+                            ? "$togetherCount Aktivitäten zusammen • letzte vor ${dataFormatter.formatTimeAgo(lastTogether)}"
+                            : "$togetherCount Aktivität zusammen vor ${dataFormatter.formatTimeAgo(lastTogether)}",
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey,
