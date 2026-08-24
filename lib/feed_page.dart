@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'widgets/post.dart';
@@ -210,7 +211,7 @@ class FeedPageState extends State<FeedPage> {
       // First launch ever — skip the extra rationale dialog,
       // go straight to the picker (it already offers GPS or manual).
       await LocationPrefs.markAsked();
-      if (mounted) await _openLocationPicker();
+      if (mounted) await _openLocationPicker(triggerRefresh: false);
     } else {
       // Already asked previously. Try a SILENT lookup only — no dialogs.
       final cached = await tryGetDeviceLocation(preferCached: true);
@@ -251,15 +252,12 @@ class FeedPageState extends State<FeedPage> {
     _refreshVersion++;
     if (_status == FeedStatus.refreshing) return;
 
-    setState(() {
-      _status = FeedStatus.refreshing;
-    });
-
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
 
     setState(() {
+      _status = FeedStatus.refreshing;
       _hasMore = true;
       posts.clear();
       candidatePool.clear();
@@ -615,7 +613,7 @@ class FeedPageState extends State<FeedPage> {
     );
   }
 
-  Future<void> _openLocationPicker() async {
+  Future<void> _openLocationPicker({bool triggerRefresh = true}) async {
     final result = await showModalBottomSheet<LocationPickerResult>(
       context: context,
       isScrollControlled: true,
@@ -636,7 +634,9 @@ class FeedPageState extends State<FeedPage> {
       _locationLabel = result.name;
     });
 
-    await _refreshFeed();
+    if (triggerRefresh) {
+      await _refreshFeed();
+    }
   }
 
   @override
@@ -728,7 +728,7 @@ class FeedPageState extends State<FeedPage> {
                           : baseCount + (hasPinned ? 1 : 0) + (_status == FeedStatus.exhausted ? 1 : 0) + (_status == FeedStatus.loadingMore || _status == FeedStatus.applyCandidates ? 1 : 0), // add extra item for pagination loader or feed exhausted message
                         itemBuilder: (context, index) {
                           /// 1. INITIAL LOADING STATE
-                          if (_status == FeedStatus.loadingInitial && _status != FeedStatus.refreshing ) {
+                          if (_status == FeedStatus.loadingInitial  || _status == FeedStatus.refreshing ) {
                             return const Padding(
                               padding: EdgeInsets.only(bottom: 16),
                               child: Padding(
