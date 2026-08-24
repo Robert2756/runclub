@@ -112,46 +112,68 @@ class LocationPrefs {
   }
 }
 
-/// ---------------------------------------------------------------------
-/// GEOCODING (OpenStreetMap Nominatim — free, no API key)
-/// Swap these two function bodies for Google Places / Mapbox / LocationIQ
-/// later if you want richer autocomplete or production-grade rate limits;
-/// the rest of the UI doesn't need to change.
-/// ---------------------------------------------------------------------
+// Reuse the same MapTiler key used for tile layers elsewhere in the app.
+const String _mapTilerApiKey = 'yH0AJynJV0qzbwHfR3q0';
+
+/// Picks a sensible short label (town/city) from a MapTiler geocoding
+/// feature. MapTiler doesn't return an `address` breakdown like Nominatim
+/// did — instead each result has a `text` (the feature's own name) plus a
+/// `context` array of parent regions. We prefer a `place`/`municipality`
+/// level entry from context when the feature itself is more specific than
+/// a town (e.g. a street address), otherwise just use `text`.
+String _shortNameFromFeature(Map<String, dynamic> feature) {
+  final placeTypes = (feature['place_type'] as List?)?.cast<String>() ?? const [];
+  final isTownLevel = placeTypes.contains('place') ||
+      placeTypes.contains('municipality') ||
+      placeTypes.contains('locality');
+
+  if (isTownLevel) {
+    return feature['text'] as String? ??
+        (feature['place_name'] as String).split(',').first;
+  }
+
+  final context = (feature['context'] as List?) ?? const [];
+  for (final entry in context) {
+    final id = entry['id'] as String? ?? '';
+    if (id.startsWith('place.') ||
+        id.startsWith('municipality.') ||
+        id.startsWith('locality.')) {
+      return entry['text'] as String? ?? feature['text'] as String;
+    }
+  }
+
+  return feature['text'] as String? ??
+      (feature['place_name'] as String).split(',').first;
+}
+
 Future<List<LocationResult>> searchLocations(String query) async {
   if (query.trim().length < 2) return [];
 
-  final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
-    'q': query,
-    'format': 'jsonv2',
-    'addressdetails': '1',
-    'limit': '6',
-  });
-
-  final response = await http.get(
-    uri,
-    headers: {
-      // Nominatim's usage policy requires a descriptive UA per app.
-      'User-Agent': 'YourAppName/1.0 (contact@yourapp.com)',
+  final uri = Uri.https(
+    'api.maptiler.com',
+    '/geocoding/${Uri.encodeComponent(query)}.json',
+    {
+      'key': _mapTilerApiKey,
+      'limit': '6',
     },
-  ).timeout(const Duration(seconds: 6));
+  );
+
+  final response = await http.get(uri).timeout(const Duration(seconds: 6));
 
   if (response.statusCode != 200) return [];
 
-  final List<dynamic> data = json.decode(response.body);
-  return data.map((item) {
-    final address = item['address'] ?? {};
-    final short = address['city'] ??
-        address['town'] ??
-        address['village'] ??
-        address['municipality'] ??
-        (item['display_name'] as String).split(',').first;
+  final data = json.decode(response.body);
+  final List<dynamic> features = data['features'] ?? [];
+
+  return features.map((item) {
+    final feature = item as Map<String, dynamic>;
+    final center = feature['center'] as List; // [lon, lat]
 
     return LocationResult(
-      displayName: item['display_name'],
-      shortName: short,
-      lat: double.parse(item['lat']),
-      lon: double.parse(item['lon']),
+      displayName: feature['place_name'] as String,
+      shortName: _shortNameFromFeature(feature),
+      lat: (center[1] as num).toDouble(),
+      lon: (center[0] as num).toDouble(),
     );
   }).toList();
 }
@@ -163,29 +185,23 @@ Future<List<LocationResult>> searchLocations(String query) async {
 /// an error for what's a nice-to-have label.
 Future<String?> reverseGeocode(double lat, double lon) async {
   try {
-    final uri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
-      'lat': '$lat',
-      'lon': '$lon',
-      'format': 'jsonv2',
-      'zoom': '10', // city-level detail, not full street address
-    });
-
-    final response = await http.get(
-      uri,
-      headers: {
-        'User-Agent': 'YourAppName/1.0 (contact@yourapp.com)',
+    final uri = Uri.https(
+      'api.maptiler.com',
+      '/geocoding/$lon,$lat.json',
+      {
+        'key': _mapTilerApiKey,
       },
-    ).timeout(const Duration(seconds: 5));
+    );
+
+    final response = await http.get(uri).timeout(const Duration(seconds: 5));
 
     if (response.statusCode != 200) return null;
 
     final data = json.decode(response.body);
-    final address = data['address'] ?? {};
-    return address['city'] ??
-        address['town'] ??
-        address['village'] ??
-        address['municipality'] ??
-        address['county'];
+    final List<dynamic> features = data['features'] ?? [];
+    if (features.isEmpty) return null;
+
+    return _shortNameFromFeature(features.first as Map<String, dynamic>);
   } catch (_) {
     return null;
   }
