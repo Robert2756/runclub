@@ -34,7 +34,7 @@ class _CheckEmailPageState extends State<CheckEmailPage> {
       await supabase.auth.resend(
         type: OtpType.signup,
         email: widget.email,
-        emailRedirectTo: 'com.enduvo.app://login-callback',
+        emailRedirectTo: 'com.enduvoapp://login-callback',
       );
 
       if (!mounted) return;

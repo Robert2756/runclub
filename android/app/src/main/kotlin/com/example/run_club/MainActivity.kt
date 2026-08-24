@@ -1,4 +1,4 @@
-package com.example.run_club
+package com.enduvoapp
 
 import android.content.Intent
 import io.flutter.embedding.android.FlutterActivity

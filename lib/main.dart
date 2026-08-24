@@ -172,7 +172,7 @@ class SplashPage extends StatelessWidget {
 }
 
 Future<void> _handleDeepLink(Uri uri) async {
-  if (uri.scheme != 'com.enduvo.app' ||
+  if (uri.scheme != 'com.enduvoapp' ||
       uri.host != 'login-callback') {
     return;
   }
