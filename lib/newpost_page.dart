@@ -10,6 +10,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'models/post.dart';
 import 'widgets/map_marker.dart';
+import 'widgets/revealing_map.dart';
 final supabase = Supabase.instance.client;
 final FocusNode descriptionFocus = FocusNode();
 final FocusNode titleFocus = FocusNode();
@@ -622,7 +623,6 @@ class _LocationSection extends StatelessWidget {
 
   final VoidCallback onHelpPressed;
   final ValueChanged<String> onTownSubmitted;
-  final bool mapReady;
   final VoidCallback onMapReady;
   final String activity;
 
@@ -635,8 +635,7 @@ class _LocationSection extends StatelessWidget {
     required this.meetingPointController,
     required this.onHelpPressed,
     required this.onTownSubmitted,
-    required this.mapReady,
-    required this.onMapReady,
+    required this.onMapReady, // ready if controller attached
     required this.activity,
   });
 
@@ -786,50 +785,28 @@ class _LocationSection extends StatelessWidget {
 
     return AspectRatio(
       aspectRatio: 4 / 3,
-      child: FlutterMap(
+      child: RevealingMap(
+        // NOTE: no key tied to mapCenter/activity — must stay stable across
+        // drags/searches or you'll recreate the tile tracker and re-shimmer.
+        location: initialLocation,
+        initialZoom: 13,
+        showMarker: false, // using centerPin instead
+        activity: activity == "Laufen" ? "Run" : "Bike",
+        mapUrl: mapUrl,
         mapController: mapController,
-        options: MapOptions(
-          initialCenter: initialLocation,
-          initialZoom: 13,
-          interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
-          ),
-
-          onMapReady: onMapReady,
-
-          // The pin stays centered while the user moves the map.
-          // This makes selecting a location much easier on mobile.
-          onPositionChanged: (position, hasGesture) {
-            if (!hasGesture) return;
-
-            final center = position.center;
-
-            if (center != null) {
-              onLocationChanged(center);
-            }
-          },
+        interactionOptions: const InteractionOptions(
+          flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
         ),
-        children: [
-          TileLayer(
-            urlTemplate: mapUrl,
-            userAgentPackageName: 'com.robert.app',
-          ),
-
-          // Fixed center pin.
-          IgnorePointer(
-            child: Center(
-              child: Transform.translate(
-                offset: const Offset(
-                  0,
-                  -(MapPinMarker.tailHeight / 2),
-                ),
-                child: MapPinMarker(
-                  activity: activity == "Laufen" ? "Run" : "Bike",
-                ),
-              )
-            ),
-          ),
-        ],
+        onMapReady: onMapReady,
+        onPositionChanged: (camera, hasGesture) {
+          if (!hasGesture) return;
+          final center = camera.center;
+          onLocationChanged(center);
+        },
+        centerPin: Transform.translate(
+          offset: const Offset(0, -(MapPinMarker.tailHeight / 2)),
+          child: MapPinMarker(activity: activity == "Laufen" ? "Run" : "Bike"),
+        ),
       ),
     );
   }
@@ -918,27 +895,6 @@ class _LocationSection extends StatelessWidget {
                 bottom: 0,
                 child: _buildMapInstruction(),
               ),
-
-              // Loading overlay.
-              if (!mapReady)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.white.withOpacity(0.72),
-                    child: const Center(
-                      child: SizedBox(
-                        width: 26,
-                        height: 26,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          valueColor:
-                              AlwaysStoppedAnimation<Color>(
-                            EnduvoColors.text,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
             ],
           ),
         ),
@@ -1436,7 +1392,7 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
   final meetingPointController = TextEditingController();
   JoinMode joinMode = JoinMode.request;
   final mapService = MapService();
-  bool mapReady = false;
+  bool _controllerAttached = false;
   // final mapUrl = 'https://api.maptiler.com/maps/basic-v2-light/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   final mapUrl = 'https://api.maptiler.com/maps/basic-v2/256/{z}/{x}/{y}.png?key=yH0AJynJV0qzbwHfR3q0';
   String? postTown;
@@ -1842,17 +1798,6 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mapReady) {
-        setState(() => mapReady = true);
-      }
-    });
-  }
-
-  @override
   void initState() {
     super.initState();
     _loadLimit();
@@ -2048,12 +1993,8 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
               mapController: mapController,
               mapCenter: mapCenter,
               mapUrl: mapUrl,
-              mapReady: mapReady,
-
               onMapReady: () {
-                if (!mapReady) {
-                  setState(() => mapReady = true);
-                }
+                _controllerAttached = true;
               },
 
               townController: townController,
@@ -2064,20 +2005,11 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
                 final query = value.trim();
                 if (query.isEmpty) return;
 
-                setState(() {
-                  mapReady = false;
-                });
-
                 try {
                   final coords =
                       await mapService.getCoordinatesFromTown(query);
 
                   if (coords == null) {
-                    if (mounted) {
-                      setState(() {
-                        mapReady = true;
-                      });
-                    }
                     return;
                   }
 
@@ -2095,20 +2027,8 @@ class _CreatePostPageV2State extends State<CreatePostPageV2> {
                   });
 
                   mapController.move(coords, 13);
-
-                  // The map is already initialized, so onMapReady
-                  // will NOT be called again here.
-                  setState(() {
-                    mapReady = true;
-                  });
                 } catch (e) {
                   debugPrint('Error searching for town: $e');
-
-                  if (!mounted) return;
-
-                  setState(() {
-                    mapReady = true;
-                  });
                 }
               },
 

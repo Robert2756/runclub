@@ -578,9 +578,9 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
     final content = Stack(
       fit: StackFit.expand,
       children: [
-        Positioned.fill(
-          child: Container(color: Colors.grey.shade200),
-        ),
+        // Positioned.fill(
+        //   child: Container(color: Colors.grey.shade200),
+        // ),
         ColorFiltered(
           colorFilter: const ColorFilter.matrix(_mutedMapFilter),
           child: FlutterMap(
@@ -664,62 +664,6 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
             ),
           ),
         ),
-
-        // // Modern town label — frosted glass pill, matching the lock badge's
-        // // material language (BackdropFilter blur + hairline border + soft
-        // // diffuse shadow) instead of a flat opaque chip.
-        // if (widget.post.town != null && widget.post.town!.isNotEmpty)
-        //   Positioned(
-        //     left: 14,
-        //     bottom: 14,
-        //     child: ClipRRect(
-        //       borderRadius: BorderRadius.circular(12),
-        //       child: BackdropFilter(
-        //         filter: dart_ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        //         child: Container(
-        //           padding: const EdgeInsets.symmetric(
-        //             horizontal: 11,
-        //             vertical: 7,
-        //           ),
-        //           decoration: BoxDecoration(
-        //             color: Colors.white.withOpacity(0.72),
-        //             borderRadius: BorderRadius.circular(12),
-        //             border: Border.all(
-        //               color: Colors.white.withOpacity(0.55),
-        //               width: 0.75,
-        //             ),
-        //             boxShadow: [
-        //               BoxShadow(
-        //                 color: Colors.black.withOpacity(0.10),
-        //                 blurRadius: 16,
-        //                 offset: const Offset(0, 4),
-        //               ),
-        //             ],
-        //           ),
-        //           child: Row(
-        //             mainAxisSize: MainAxisSize.min,
-        //             children: [
-        //               Icon(
-        //                 Icons.place_rounded,
-        //                 size: 13,
-        //                 color: Colors.black.withOpacity(0.55),
-        //               ),
-        //               const SizedBox(width: 5),
-        //               Text(
-        //                 widget.post.town!,
-        //                 style: TextStyle(
-        //                   fontSize: 12.5,
-        //                   fontWeight: FontWeight.w600,
-        //                   letterSpacing: -0.15,
-        //                   color: Colors.black.withOpacity(0.85),
-        //                 ),
-        //               ),
-        //             ],
-        //           ),
-        //         ),
-        //       ),
-        //     ),
-        //   ),
 
         if (showLocationMarker) _buildLocationNotice(),
 
