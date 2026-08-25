@@ -5,3 +5,4 @@
 -dontwarn okhttp3.Request
 -dontwarn okhttp3.Response
 -dontwarn okhttp3.ResponseBody
+-keep class com.builttoroam.devicecalendar.** { *; }

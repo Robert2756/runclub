@@ -975,13 +975,20 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       }
 
       final calendars = calendarsResult.data!.whereType<Calendar>().toList();
-
+      for (final c in calendars) {
+        debugPrint(
+          '[calendar] name="${c.name}" id=${c.id} '
+          'accountName=${c.accountName} isReadOnly=${c.isReadOnly}',
+        );
+      }
       if (calendars.isEmpty) {
         _showCalendarError('Kein Kalender auf diesem Gerät gefunden.');
         return;
       }
 
-      final writable = calendars.where((c) => c.isReadOnly != true).toList();
+      final writable = calendars
+        .where((c) => c.isReadOnly != true && c.id != null)
+        .toList();
 
       if (writable.isEmpty) {
         _showCalendarError(
