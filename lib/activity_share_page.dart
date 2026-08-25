@@ -106,9 +106,9 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
       final boundary =
           _captureKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
 
-      while (boundary.debugNeedsPaint) {
-        await Future.delayed(const Duration(milliseconds: 20));
-      }
+      // while (boundary.debugNeedsPaint) {
+      //   await Future.delayed(const Duration(milliseconds: 20));
+      // }
 
       final image = await boundary.toImage(pixelRatio: 3.0);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -158,9 +158,9 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
       final boundary =
           _exportKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
 
-      while (boundary.debugNeedsPaint) {
-        await Future.delayed(const Duration(milliseconds: 16));
-      }
+      // while (boundary.debugNeedsPaint) {
+      //   await Future.delayed(const Duration(milliseconds: 16));
+      // }
 
       final image = await boundary.toImage(pixelRatio: dpr);
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);

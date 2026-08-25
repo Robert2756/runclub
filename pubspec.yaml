@@ -54,6 +54,7 @@ dependencies:
   app_links: ^6.4.1
   go_router: ^14.0.0
   file_saver: ^0.2.0
+  http: ^1.2.0
   cached_network_image: ^3.4.1
   # flutter_launcher_icons: ^0.13.1
   flutter_localizations:
@@ -140,3 +141,5 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/EnduvoLogo10.png
+  adaptive_icon_background: "#ffffff"   # your EnduvoColors.navy, or "#ffffff" to match splash
+  adaptive_icon_foreground: assets/EnduvoLogo10.png
