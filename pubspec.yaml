@@ -126,8 +126,8 @@ flutter:
 
 flutter_native_splash:
   color: "#ffffff"
-  image: assets/EnduvoCoverAndroid.png       # 1000x1000px (mine 1024x1024) logo-only, centered within safe circle
-  branding: assets/EnduvoBranding.png  # 800x320px, text-only, for legacy Android
+  image: assets/EnduvoLogo1024x1024.png       # 1000x1000px (mine 1024x1024) logo-only, centered within safe circle
+  # branding: assets/EnduvoBranding.png  # 800x320px, text-only, for legacy Android
   android: true
   ios: true
 
@@ -135,11 +135,11 @@ flutter_native_splash:
     color: "#ffffff"
     image: assets/EnduvoLogoAndroid12.png   # 1152x1152, logo only, centered within safe circle
     icon_background_color: "#ffffff"
-    branding: assets/EnduvoBranding.png      # same 800x320 branding image, shown below the icon
+    # branding: assets/EnduvoBranding.png      # same 800x320 branding image, shown below the icon
 
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/EnduvoLogo10.png
   adaptive_icon_background: "#ffffff"   # your EnduvoColors.navy, or "#ffffff" to match splash
-  adaptive_icon_foreground: assets/EnduvoLogo10.png
+  adaptive_icon_foreground: assets/EnduvoLogoAdaptiveForeground.png
