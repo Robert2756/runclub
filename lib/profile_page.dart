@@ -11,6 +11,8 @@ import 'activity_page.dart';
 import 'models/post.dart';
 import 'package:intl/intl.dart';
 import 'signin_page.dart';
+import 'profile_settings_page.dart';
+
 final imageService = ImageService();
 final supabase = Supabase.instance.client;
 
@@ -1738,96 +1740,22 @@ class _ProfilePageState extends State<ProfilePage> with RouteAware {
     return Scaffold(
       backgroundColor: EnduvoColors.background, // Colors.white,
       appBar: AppAppBar(
-        actions: [
-          if (isMe) ...[
-            IconButton(
-              tooltip: 'Abmelden',
-              icon: _signingOut
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.logout),
-              onPressed: _signingOut
-                ? null
-                : () async {
-                final shouldSignOut = await showDialog<bool>(
-                  context: context,
-                  builder: (dialogContext) {
-                    return AlertDialog(
-                      backgroundColor: Colors.white,
-                      surfaceTintColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      title: const Text(
-                        'Abmelden?',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      content: const Text(
-                        'Möchtest du dich wirklich von deinem Konto abmelden?',
-                        style: TextStyle(
-                          color: Colors.black87,
-                        ),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(dialogContext, false),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.black,
-                          ),
-                          child: const Text('Abbrechen'),
-                        ),
-                        FilledButton(
-                          onPressed: () => Navigator.pop(dialogContext, true),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.black,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: const Text('Abmelden'),
-                        ),
-                      ],
-                    );
-                  },
-                );
-
-                if (shouldSignOut != true) return;
-                setState(() => _signingOut = true);
-
-                try {
-                  await supabase.auth.signOut();
-                } catch (e) {
-                  debugPrint('Logout failed: $e');
-
-                  if (!context.mounted) return;
-                  setState(() => _signingOut = false);
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Abmelden fehlgeschlagen. Bitte erneut versuchen.'),
-                    ),
-                  );
-                }
-              },
-            ),
-            // IconButton(
-            //   tooltip: 'Settings',
-            //   icon: const Icon(Icons.settings),
-            //   onPressed: () {
-            //     Navigator.push(
-            //       context,
-            //       MaterialPageRoute(
-            //         builder: (_) => const SettingsPage(title: "Settings"),
-            //       ),
-            //     );
-            //   },
-            // ),
-          ],
+      actions: [
+        if (isMe) ...[
+          IconButton(
+            tooltip: 'Einstellungen',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProfileSettingsPage(title: "Einstellungen"),
+                ),
+              );
+            },
+          ),
         ],
+      ],
       ),
       body: _profileReady
           ? SafeArea(
