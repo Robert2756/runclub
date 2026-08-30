@@ -1223,7 +1223,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
 
     if (Platform.isIOS) {
       url = Uri.parse(
-        'https://maps.apple.com/?ll=$lat,$lng',
+            'https://maps.apple.com/?ll=$lat,$lng&q=$lat,$lng',
       );
     } else {
       url = Uri.parse(
@@ -1235,7 +1235,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
       if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not open Maps')),
+            const SnackBar(content: Text('Karte konnte nicht geöffnet werden')),
           );
         }
       }

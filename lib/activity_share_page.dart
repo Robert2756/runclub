@@ -217,7 +217,7 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
     await Gal.putImage(file.path);
   }
 
-  Future<void> _handleShare() async {
+  Future<void> _handleShare(BuildContext buttonContext) async {
     if (_busy) return;
     setState(() {
       _busy = true;
@@ -234,10 +234,17 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
         mimeType: 'image/png',
       );
 
+      final box = buttonContext.findRenderObject() as RenderBox?;
+      final origin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+
       await Share.shareXFiles(
-        [file],
-        text: 'Mit Enduvo unterwegs — ${widget.post.title}',
-      );
+            [file],
+            text: 'Mit Enduvo unterwegs — ${widget.post.title}',
+            sharePositionOrigin: origin,
+          );
+
     } catch (e) {
       debugPrint('Share failed: $e');
       if (!mounted) return;
@@ -804,14 +811,16 @@ class _ActivitySharePageState extends State<ActivitySharePage> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: SizedBox(
-                      height: 52,
-                      child: _actionButton(
-                        label: 'Teilen',
-                        icon: Icons.ios_share_rounded,
-                        onPressed: _handleShare,
-                        primary: true,
-                        loading: _busy && _busyAction == 'share',
+                    child: Builder(
+                      builder: (buttonContext) => SizedBox(
+                        height: 52,
+                        child: _actionButton(
+                          label: 'Teilen',
+                          icon: Icons.ios_share_rounded,
+                          onPressed: () => _handleShare(buttonContext),
+                          primary: true,
+                          loading: _busy && _busyAction == 'share',
+                        ),
                       ),
                     ),
                   ),
