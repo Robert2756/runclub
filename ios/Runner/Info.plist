@@ -39,6 +39,8 @@
 	<string>Wir benötigen Zugriff auf deinen Kalender, um Aktivitäten hinzuzufügen.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Mit deinem Standort zeigen wir dir Aktivitäten in deiner Nähe.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Mit deinem Standort zeigen wir dir Aktivitäten in deiner Nähe, auch wenn die App im Hintergrund läuft.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -84,6 +86,8 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-   <string>Wir benötigen Zugriff, um Fotos in deiner Galerie zu speichern.</string>
+   	<string>Wir benötigen Zugriff, um Fotos in deiner Galerie zu speichern.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Wir benötigen Zugriff auf deine Fotos, um sie in deinem Profil oder deinen Beiträgen zu verwenden.</string>
 </dict>
 </plist>

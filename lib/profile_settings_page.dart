@@ -70,7 +70,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
       // Pop back out of Settings; whatever listens for
       // currentUser == null (as ProfilePage's build() already does)
       // will take it from there.
-      if (mounted) Navigator.pop(context);
+      // if (mounted) Navigator.pop(context);
     } catch (e) {
       debugPrint('Logout failed: $e');
 
@@ -185,7 +185,7 @@ class _ProfileSettingsPageState extends State<ProfileSettingsPage> {
       // Belt-and-suspenders: clear the local session too.
       await supabase.auth.signOut();
 
-      if (mounted) Navigator.pop(context);
+      //if (mounted) Navigator.pop(context);
     } catch (e) {
       debugPrint('Delete account failed: $e');
       if (!mounted) return;
