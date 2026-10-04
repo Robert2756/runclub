@@ -676,9 +676,14 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                       children: [
                         Expanded(
                           child: GestureDetector(
-                            onTap: isDeleting
-                                ? null
-                                : () => Navigator.pop(context, false),
+                          onTap: isDeleting
+                              ? null
+                              : () async {
+                                  setState(() => isDeleting = true);
+
+                                  // close dialog AFTER setting loading state
+                                  Navigator.pop(context, true);
+                                },
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
@@ -707,7 +712,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                                     setState(() => isDeleting = true);
 
                                     // close dialog AFTER setting loading state
-                                    Navigator.pop(context, 'deleted');
+                                    Navigator.pop(context, true);
                                   },
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
@@ -758,7 +763,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
         // messages, participants, notifications, reports all vanish automatically since in db foreign key set to on delete cascade
 
       if (mounted) {
-        Navigator.pop(context, true);
+        Navigator.pop(context, 'deleted');
       }
     } finally {
       if (mounted) {
