@@ -147,14 +147,17 @@ String _shortNameFromFeature(Map<String, dynamic> feature) {
 }
 
 Future<List<LocationResult>> searchLocations(String query) async {
-  if (query.trim().length < 2) return [];
+  final q = query.trim().replaceAll('/', ' ');
+  if (q.length < 2) return [];
 
   final uri = Uri.https(
     'api.maptiler.com',
-    '/geocoding/${Uri.encodeComponent(query)}.json',
+    '/geocoding/$q.json',          // no encodeComponent, Uri.https encodes it
     {
       'key': _mapTilerApiKey,
       'limit': '6',
+      'language': 'de',            // German names (Köln, München)
+      'country': 'de',             // restrict to Germany
     },
   );
 
