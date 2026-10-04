@@ -496,7 +496,7 @@ class FeedPageState extends State<FeedPage> {
       );
     }
 
-    if (candidatePool.isEmpty && posts.isEmpty && !_hasMore) {
+    if (candidatePool.isEmpty && posts.isEmpty && !_hasMore && _pinnedPost == null) {
       setState(() {
         _status = FeedStatus.exhausted;
       });
@@ -535,6 +535,7 @@ class FeedPageState extends State<FeedPage> {
         'activity': _pinnedPost!.activity,
         'distance': _pinnedPost!.distance,
         'pace': _pinnedPost!.pace,
+        'speed': _pinnedPost!.speed,
         'latitude': _pinnedPost!.latitude,
         'longitude': _pinnedPost!.longitude,
         'town': _pinnedPost!.town,
@@ -823,8 +824,15 @@ class FeedPageState extends State<FeedPage> {
                                           showImageMap[post['id'].toString()] = val;
                                         });
                                       },
-                                      onPostDeleted: (id) async{
-                                        await _refreshFeed();
+                                      onPostDeleted: (id) {
+                                        setState(() {
+                                          posts.removeWhere((p) => p['id'].toString() == id);
+                                          candidatePool.removeWhere((p) => p['id'].toString() == id);
+                                          showImageMap.remove(id);
+                                          postTextLoaded.remove(id);
+                                        });
+                                        // If that was the last visible post, reload so the empty state / next batch shows correctly
+                                        if (posts.isEmpty) _refreshFeed();
                                       },
                                     ),
                                   ),

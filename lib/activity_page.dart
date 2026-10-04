@@ -707,7 +707,7 @@ class _ActivityPageState extends State<ActivityPage> with SingleTickerProviderSt
                                     setState(() => isDeleting = true);
 
                                     // close dialog AFTER setting loading state
-                                    Navigator.pop(context, true);
+                                    Navigator.pop(context, 'deleted');
                                   },
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),

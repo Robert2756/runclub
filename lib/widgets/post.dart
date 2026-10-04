@@ -794,6 +794,11 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
 
     if (!mounted) return;
 
+    if (refreshPost == 'deleted') {
+      widget.onPostDeleted?.call(widget.post.id);
+      return;
+    }
+
     await _refreshParticipants();
   }
 
@@ -1176,7 +1181,7 @@ class _PostCardState extends State<PostCard> with RouteAware, AutomaticKeepAlive
                           child: Text(
                             ((widget.post.startsAt != null)
                               ? dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!)) == "Heute" || dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!)) == "Morgen"
-                                ? "${dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!))} $bullet ${dataFormatter.formatTime(DateTime.parse(widget.post.startsAt!))}"
+                                ? "${dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!))} $bullet ${dataFormatter.formatTime(DateTime.parse(widget.post.startsAt!).toLocal())}"
                                 : "${dataFormatter.formatActivityDate(DateTime.parse(widget.post.startsAt!))} $bullet ${dataFormatter.activityRelativeTime(DateTime.parse(widget.post.startsAt!))}"
                               : "none"),
                             style: TextStyle(
